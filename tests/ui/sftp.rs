@@ -6,22 +6,20 @@ use gpui_kit::AnyWindowHandle;
 use shellrs::app::{CloseExplorer, ExplorerCommand, ExplorerShortcut};
 
 #[gpui_kit::test]
-async fn sftp_button_opens_explorer_and_navigates(cx: &mut TestAppContext) {
+async fn sftp_command_opens_explorer_and_navigates(cx: &mut TestAppContext) {
     let (handle, workspace) = open_workspace(cx);
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        window
-            .within("host-tree")
-            .double_click(("host-row", DB_01), cx);
+        window.dispatch_action(Box::new(ConnectHost(HostId(DB_01))), cx);
     })
     .unwrap();
     cx.run_until_parked();
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        // The active terminal tab's toolbar shows the SFTP button.
-        window.click(("sftp", FIRST_NEW_TERMINAL), cx);
+        // The tab menu opens SFTP through the workspace action.
+        window.dispatch_action(Box::new(OpenExplorer(HostId(DB_01))), cx);
     })
     .unwrap();
     cx.run_until_parked();
@@ -611,10 +609,18 @@ async fn sftp_toolbar_goes_up_root_home_back_and_forward(cx: &mut TestAppContext
         );
     })
     .unwrap();
-    // In red at the window's bottom left, where the connection shows.
+    // A failed request retains its problem without changing the directory.
     cx.wait_for(handle.into(), Duration::from_secs(2), |window, cx| {
         window.render_frame(cx);
-        window.find("status-connection").label() == Some("权限不足")
+        workspace
+            .read(cx)
+            .explorer(ExplorerId(SFTP_TAB))
+            .unwrap()
+            .read(cx)
+            .status(cx)
+            .problem
+            .as_deref()
+            == Some("权限不足")
     })
     .await;
     cx.update(|cx| {
@@ -1146,7 +1152,7 @@ async fn sftp_panes_keep_their_split_across_tab_switches(cx: &mut TestAppContext
 async fn sftp_remote_commands_while_disconnected_offer_to_reconnect(cx: &mut TestAppContext) {
     use shellrs::app::{ExplorerAction, ExplorerCommand};
     let provider = Arc::new(FakeSftpProvider::default());
-    let (handle, _) = open_workspace_with_sftp(cx, provider.clone());
+    let (handle, workspace) = open_workspace_with_sftp(cx, provider.clone());
     open_test_explorer(cx, handle).await;
     let events = provider.events.lock().unwrap()[0].clone();
     events
@@ -1154,7 +1160,7 @@ async fn sftp_remote_commands_while_disconnected_offer_to_reconnect(cx: &mut Tes
         .unwrap();
     cx.wait_for(handle.into(), Duration::from_secs(2), |window, cx| {
         window.render_frame(cx);
-        window.find("status-connection").label() == Some("未连接 db-01：SFTP 连接中断，请重新连接")
+        active_connection_state(&workspace, cx) == Some(ConnectionState::Disconnected)
     })
     .await;
 
@@ -1177,11 +1183,9 @@ async fn sftp_remote_commands_while_disconnected_offer_to_reconnect(cx: &mut Tes
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
         assert!(window.try_find("ok").is_none());
-        assert!(
-            window
-                .find("status-connection")
-                .label()
-                .is_some_and(|status| status.starts_with("未连接"))
+        assert_eq!(
+            active_connection_state(&workspace, cx),
+            Some(ConnectionState::Disconnected)
         );
     })
     .unwrap();
@@ -1224,24 +1228,18 @@ async fn sftp_remote_commands_while_disconnected_offer_to_reconnect(cx: &mut Tes
     .unwrap();
     cx.wait_for(handle.into(), Duration::from_secs(2), |window, cx| {
         window.render_frame(cx);
-        window.find("status-connection").label() == Some("已连接 db-01")
+        active_connection_state(&workspace, cx) == Some(ConnectionState::Connected)
     })
     .await;
     assert_eq!(*provider.reconnects.lock().unwrap(), 1);
 }
 
-/// Like a terminal tab, an SFTP tab shows its connection's round trip beside
-/// its buttons, and only while it is connected.
+/// Latency updates keep the SFTP content free of tab bar chrome.
 #[gpui_kit::test]
-async fn the_sftp_tab_bar_shows_the_connection_latency_while_connected(cx: &mut TestAppContext) {
+async fn sftp_latency_updates_do_not_add_a_toolbar(cx: &mut TestAppContext) {
     let provider = Arc::new(FakeSftpProvider::default());
-    let (handle, _) = open_workspace_with_sftp(cx, provider.clone());
+    let (handle, workspace) = open_workspace_with_sftp(cx, provider.clone());
     open_test_explorer(cx, handle).await;
-    let latency = ("sftp-latency", SFTP_TAB);
-    in_frame(cx, handle, |window, _| {
-        assert!(window.try_find(latency).is_none(), "nothing measured yet");
-    });
-
     let events = provider.events.lock().unwrap()[0].clone();
     for millis in [32, 180] {
         events
@@ -1249,41 +1247,39 @@ async fn the_sftp_tab_bar_shows_the_connection_latency_while_connected(cx: &mut 
                 Duration::from_millis(millis),
             )))
             .unwrap();
-        let shown = format!("{millis} ms");
-        cx.wait_for(handle.into(), Duration::from_secs(2), |window, cx| {
-            window.render_frame(cx);
-            window
-                .try_find(latency)
-                .is_some_and(|element| element.label() == Some(shown.as_str()))
-        })
-        .await;
+        in_frame(cx, handle, |window, _| {
+            assert!(window.try_find(("sftp-latency", SFTP_TAB)).is_none());
+            assert!(window.try_find("center-toolbar").is_none());
+            assert!(window.find(("explorer", SFTP_TAB)).visible());
+        });
     }
-
     events
         .send_blocking(SftpEvent::Disconnected("SFTP 连接中断，请重新连接".into()))
         .unwrap();
     cx.wait_for(handle.into(), Duration::from_secs(2), |window, cx| {
         window.render_frame(cx);
-        window.try_find(latency).is_none()
+        assert!(window.try_find(("sftp-latency", SFTP_TAB)).is_none());
+        active_connection_state(&workspace, cx) == Some(ConnectionState::Disconnected)
     })
     .await;
 }
 
 #[gpui_kit::test]
-async fn sftp_tab_reconnects_from_its_tab_bar_and_reports_at_the_bottom_left(
+async fn sftp_tab_reconnects_from_its_menu_command_and_updates_its_connection_mark(
     cx: &mut TestAppContext,
 ) {
     let provider = Arc::new(FakeSftpProvider::default());
     let (handle, workspace) = open_workspace_with_sftp(cx, provider.clone());
     open_test_explorer(cx, handle).await;
     let reconnect = ("reconnect-sftp", SFTP_TAB);
-    let status_is = |expected: &'static str| {
+    let status_is = |expected: ConnectionState| {
+        let workspace = workspace.clone();
         move |window: &mut gpui_kit::Window, cx: &mut App| {
             window.render_frame(cx);
-            window.find("status-connection").label() == Some(expected) && {
+            active_connection_state(&workspace, cx) == Some(expected) && {
                 // Only a connection that is not up greys the mark.
-                let state = mark_state(window, ("explorer-tab-os", SFTP_TAB));
-                if expected.starts_with("已连接") {
+                let state = tab_connection_state(window, ("explorer-tab", SFTP_TAB));
+                if expected == ConnectionState::Connected {
                     state.is_none()
                 } else {
                     state.as_deref() == Some("未连接")
@@ -1295,10 +1291,13 @@ async fn sftp_tab_reconnects_from_its_tab_bar_and_reports_at_the_bottom_left(
         .update_window(handle.into(), |_, window, cx| {
             window.render_frame(cx);
             assert_eq!(
-                window.find("status-connection").label(),
-                Some("已连接 db-01")
+                active_connection_state(&workspace, cx),
+                Some(ConnectionState::Connected)
             );
-            assert_eq!(mark_state(window, ("explorer-tab-os", SFTP_TAB)), None);
+            assert_eq!(
+                tab_connection_state(window, ("explorer-tab", SFTP_TAB)),
+                None
+            );
             window
                 .within(("remote-pane", SFTP_TAB))
                 .find("table")
@@ -1306,7 +1305,7 @@ async fn sftp_tab_reconnects_from_its_tab_bar_and_reports_at_the_bottom_left(
         })
         .unwrap();
 
-    // Dropped: the reason goes to the window's status line.
+    // A dropped connection greys its tab mark.
     let events = provider.events.lock().unwrap()[0].clone();
     events
         .send_blocking(SftpEvent::Disconnected("连接已断开".into()))
@@ -1314,29 +1313,36 @@ async fn sftp_tab_reconnects_from_its_tab_bar_and_reports_at_the_bottom_left(
     cx.wait_for(
         handle.into(),
         Duration::from_secs(2),
-        status_is("未连接 db-01：连接已断开"),
+        status_is(ConnectionState::Disconnected),
     )
     .await;
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
         let tab = window.within(("explorer-tab", SFTP_TAB));
-        let mark = tab.find(("explorer-tab-os", SFTP_TAB)).bounds();
+        let label = tab.find("label").bounds();
+        assert!(window.try_find(("explorer-tab-os", SFTP_TAB)).is_none());
         let title = window.find(("explorer-tab", SFTP_TAB)).bounds();
-        let close = window.find(("close-explorer", SFTP_TAB)).bounds();
-        assert_eq!(mark.center().y, close.center().y);
-        assert_eq!(mark.center().y, title.center().y);
+        assert!(window.try_find(("close-explorer", SFTP_TAB)).is_none());
+        assert_eq!(label.center().y, title.center().y);
         let remote = window.within(("remote-pane", SFTP_TAB));
         assert_eq!(remote.find("table").bounds(), table);
         // Still there to click: it answers with the offer to reconnect.
         assert!(enabled(&remote.find("refresh")));
         assert_ne!(remote.find("pane-status").label(), Some("连接已断开"));
-        window.click(reconnect, cx);
+        assert!(window.try_find(reconnect).is_none());
+        window.dispatch_action(
+            Box::new(shellrs::app::ExplorerAction::new(
+                ExplorerId(SFTP_TAB),
+                ExplorerCommand::Reconnect,
+            )),
+            cx,
+        );
     })
     .unwrap();
     cx.wait_for(
         handle.into(),
         Duration::from_secs(2),
-        status_is("已连接 db-01"),
+        status_is(ConnectionState::Connected),
     )
     .await;
     assert_eq!(*provider.reconnects.lock().unwrap(), 1);
@@ -1344,7 +1350,14 @@ async fn sftp_tab_reconnects_from_its_tab_bar_and_reports_at_the_bottom_left(
     // Connected, it drops the connection and makes a new one.
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        window.click(reconnect, cx);
+        assert!(window.try_find(reconnect).is_none());
+        window.dispatch_action(
+            Box::new(shellrs::app::ExplorerAction::new(
+                ExplorerId(SFTP_TAB),
+                ExplorerCommand::Reconnect,
+            )),
+            cx,
+        );
     })
     .unwrap();
     cx.wait_for(handle.into(), Duration::from_secs(2), |_, _| {
@@ -1354,14 +1367,14 @@ async fn sftp_tab_reconnects_from_its_tab_bar_and_reports_at_the_bottom_left(
     cx.wait_for(
         handle.into(),
         Duration::from_secs(2),
-        status_is("已连接 db-01"),
+        status_is(ConnectionState::Connected),
     )
     .await;
 
     // 打开 SFTP opens another tab of the same host.
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        window.click(("open-sftp", SFTP_TAB), cx);
+        window.dispatch_action(Box::new(OpenExplorer(HostId(DB_01))), cx);
     })
     .unwrap();
     cx.run_until_parked();
@@ -1900,18 +1913,18 @@ async fn sftp_clicking_outside_the_names_clears_the_selection(cx: &mut TestAppCo
 }
 
 #[gpui_kit::test]
-async fn the_sftp_tab_shows_the_host_mark_like_its_terminal_tabs(cx: &mut TestAppContext) {
+async fn the_sftp_tab_has_no_host_badge_even_after_os_detection(cx: &mut TestAppContext) {
     let provider = Arc::new(FakeSftpProvider::default());
     let (handle, workspace) = open_workspace_with_sftp(cx, provider);
     open_test_explorer(cx, handle).await;
     let mark = ("explorer-tab-os", SFTP_TAB);
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        assert_eq!(window.find(mark).label(), Some("未探测到系统"));
+        assert!(window.try_find(mark).is_none());
+        assert!(window.find(("explorer-tab", SFTP_TAB)).visible());
     })
     .unwrap();
-    // A terminal of the same host finds the system: the host list shows
-    // it, the open SFTP tab keeps what it took.
+    // Detecting the system does not add a badge to an open SFTP tab.
     cx.update(|cx| {
         let store = workspace.read(cx).store().clone();
         store.update(cx, |store, cx| {
@@ -1921,8 +1934,18 @@ async fn the_sftp_tab_shows_the_host_mark_like_its_terminal_tabs(cx: &mut TestAp
     cx.run_until_parked();
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        assert_eq!(window.find(mark).label(), Some("未探测到系统"));
-        assert_eq!(window.find(("host-os", DB_01)).label(), Some("Ubuntu"));
+        assert!(window.try_find(mark).is_none());
+        assert!(window.find(("explorer-tab", SFTP_TAB)).visible());
+        assert_eq!(
+            workspace
+                .read(cx)
+                .store()
+                .read(cx)
+                .host(HostId(DB_01))
+                .unwrap()
+                .os,
+            Some(HostOs::Ubuntu)
+        );
     })
     .unwrap();
 }
@@ -1969,7 +1992,7 @@ async fn the_sftp_tab_can_be_renamed_and_follow_the_host_again(cx: &mut TestAppC
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
         // A closed dialog leaves nothing focused.
-        window.click("host-search", cx);
+        window.click("remote-path", cx);
         window.dispatch_action(Box::new(RenameExplorer(ExplorerId(SFTP_TAB))), cx);
     })
     .unwrap();
@@ -2102,7 +2125,10 @@ async fn opening_sftp_again_opens_another_tab_of_its_own(cx: &mut TestAppContext
     // Closing one keeps the other, and the host stays connected.
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        window.click(("close-explorer", second.0), cx);
+        window.dispatch_action(
+            Box::new(shellrs::app::CloseExplorer(ExplorerId(second.0))),
+            cx,
+        );
     })
     .unwrap();
     cx.run_until_parked();

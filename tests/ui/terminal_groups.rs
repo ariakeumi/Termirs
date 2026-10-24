@@ -57,6 +57,7 @@ async fn open(cx: &mut TestAppContext) -> Fixture {
             Workspace::new_with_services(
                 cx.new(|_| seed),
                 cx.new(|_| settings_store()),
+                None,
                 remote,
                 fake_telnet_terminals(),
                 fake_serial_terminals(),
@@ -99,7 +100,7 @@ async fn open(cx: &mut TestAppContext) -> Fixture {
 /// Turn 命令广播 on and check web-01's and staging-api's terminals.
 fn select_pair(cx: &mut TestAppContext, handle: WindowHandle<Root>) {
     in_frame(cx, handle, |window, cx| {
-        window.click("toggle-terminal-broadcast", cx)
+        window.dispatch_action(Box::new(shellrs::app::ToggleTerminalBroadcast), cx)
     });
     for id in [INITIAL_WEB_TERMINAL, INITIAL_STAGING_TERMINAL] {
         in_frame(cx, handle, |window, cx| {
@@ -108,17 +109,14 @@ fn select_pair(cx: &mut TestAppContext, handle: WindowHandle<Root>) {
         });
     }
     in_frame(cx, handle, |window, _| {
-        assert_eq!(
-            window.find("toggle-terminal-broadcast").label(),
-            Some("广播中 · 2 个终端")
-        );
+        assert!(window.try_find("toggle-terminal-broadcast").is_none());
     });
 }
 
 /// Open a local terminal, LocalTerminalId(1), and wait for its shell.
 async fn open_local(cx: &mut TestAppContext, fixture: &Fixture) {
     in_frame(cx, fixture.handle, |window, cx| {
-        window.click("new-local-terminal", cx)
+        window.dispatch_action(Box::new(shellrs::app::NewLocalTerminal), cx)
     });
     cx.wait_for(fixture.handle.into(), Duration::from_secs(2), |_, cx| {
         fixture
@@ -138,32 +136,31 @@ async fn open_local(cx: &mut TestAppContext, fixture: &Fixture) {
 }
 
 #[gpui_kit::test]
-async fn the_toggle_puts_checkboxes_ahead_of_the_tab_marks(cx: &mut TestAppContext) {
+async fn the_toggle_puts_checkboxes_ahead_of_the_tab_labels(cx: &mut TestAppContext) {
     let fixture = open(cx).await;
     let handle = fixture.handle;
     in_frame(cx, handle, |window, cx| {
         assert!(window.try_find("broadcast-bar").is_none());
-        let hide = window.find("toggle-dock:Left").bounds();
-        let broadcast = window.find("toggle-terminal-broadcast").bounds();
+        assert!(window.try_find("toggle-dock:Left").is_none());
+        assert!(window.try_find("toggle-terminal-broadcast").is_none());
         let tab = window.find(("terminal-tab", INITIAL_WEB_TERMINAL)).bounds();
-        assert!(hide.right() <= broadcast.left());
-        assert!(broadcast.right() <= tab.left());
-        assert!((hide.center().y - broadcast.center().y).abs() <= px(1.));
+        assert!(tab.right() <= window.find("open-tabs").bounds().right());
         assert!(
             window
-                .find(("terminal-tab-os", INITIAL_WEB_TERMINAL))
-                .visible()
+                .try_find(("terminal-tab-os", INITIAL_WEB_TERMINAL))
+                .is_none()
         );
-        window.click("toggle-terminal-broadcast", cx);
+        window.dispatch_action(Box::new(shellrs::app::ToggleTerminalBroadcast), cx);
     });
     let active = cx.update(|cx| fixture.workspace.read(cx).active_tab());
     in_frame(cx, handle, |window, cx| {
-        // The checkbox comes ahead of the mark, which still tells whether
-        // the terminal is connected.
+        // The checkbox comes ahead of the title without a host badge.
         let checkbox = window.find(("broadcast-remote", INITIAL_WEB_TERMINAL));
-        let mark = window.find(("terminal-tab-os", INITIAL_WEB_TERMINAL));
-        assert!(mark.visible());
-        assert!(checkbox.bounds().right() <= mark.bounds().left());
+        let label = window
+            .within(("terminal-tab", INITIAL_WEB_TERMINAL))
+            .find("label");
+        assert!(label.visible());
+        assert!(checkbox.bounds().right() <= label.bounds().left());
         assert_eq!(checkbox.checked(), Some(false));
         window.click(("broadcast-remote", INITIAL_WEB_TERMINAL), cx);
     });
@@ -174,17 +171,14 @@ async fn the_toggle_puts_checkboxes_ahead_of_the_tab_marks(cx: &mut TestAppConte
     );
     in_frame(cx, handle, |window, cx| {
         assert!(window.try_find("broadcast-bar").is_none());
-        assert_eq!(
-            window.find("toggle-terminal-broadcast").label(),
-            Some("命令广播 · 勾选至少两个终端")
-        );
-        window.click("toggle-terminal-broadcast", cx)
+        assert!(window.try_find("toggle-terminal-broadcast").is_none());
+        window.dispatch_action(Box::new(shellrs::app::ToggleTerminalBroadcast), cx)
     });
     in_frame(cx, handle, |window, _| {
         assert!(
             window
-                .find(("terminal-tab-os", INITIAL_WEB_TERMINAL))
-                .visible()
+                .try_find(("terminal-tab-os", INITIAL_WEB_TERMINAL))
+                .is_none()
         );
         assert!(
             window
@@ -192,13 +186,23 @@ async fn the_toggle_puts_checkboxes_ahead_of_the_tab_marks(cx: &mut TestAppConte
                 .is_none()
         );
     });
-    // With a tab left, the toggle stays; the start page has no tab bar.
+    // Closing tabs does not reintroduce toolbar controls.
     in_frame(cx, handle, |window, cx| {
-        window.click(("close-terminal", INITIAL_WEB_TERMINAL), cx)
+        window.dispatch_action(
+            Box::new(shellrs::app::CloseTerminal(RemoteTerminalId(
+                INITIAL_WEB_TERMINAL,
+            ))),
+            cx,
+        )
     });
     in_frame(cx, handle, |window, cx| {
-        assert!(window.find("toggle-terminal-broadcast").visible());
-        window.click(("close-terminal", INITIAL_STAGING_TERMINAL), cx)
+        assert!(window.try_find("toggle-terminal-broadcast").is_none());
+        window.dispatch_action(
+            Box::new(shellrs::app::CloseTerminal(RemoteTerminalId(
+                INITIAL_STAGING_TERMINAL,
+            ))),
+            cx,
+        )
     });
     in_frame(cx, handle, |window, _| {
         assert!(window.try_find("toggle-terminal-broadcast").is_none());
@@ -281,7 +285,7 @@ async fn a_terminal_that_cannot_take_the_command_says_so(cx: &mut TestAppContext
     let handle = fixture.handle;
     open_local(cx, &fixture).await;
     in_frame(cx, handle, |window, cx| {
-        window.click("toggle-terminal-broadcast", cx)
+        window.dispatch_action(Box::new(shellrs::app::ToggleTerminalBroadcast), cx)
     });
     for target in [
         ElementId::from(("broadcast-remote", INITIAL_WEB_TERMINAL)),
@@ -356,7 +360,7 @@ async fn shared_keys_reach_every_checked_terminal_in_its_own_mode(cx: &mut TestA
     .await;
     // Stopping ends the sharing too.
     in_frame(cx, handle, |window, cx| {
-        window.click("toggle-terminal-broadcast", cx)
+        window.dispatch_action(Box::new(shellrs::app::ToggleTerminalBroadcast), cx)
     });
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal", INITIAL_STAGING_TERMINAL), cx);
@@ -408,10 +412,7 @@ async fn hidden_tabs_stay_selected_but_reconnected_tabs_leave_broadcast(cx: &mut
         window.dispatch_action(Box::new(OpenSettings), cx)
     });
     in_frame(cx, handle, |window, _| {
-        assert_eq!(
-            window.find("toggle-terminal-broadcast").label(),
-            Some("广播中 · 2 个终端")
-        )
+        assert!(window.try_find("toggle-terminal-broadcast").is_none());
     });
     in_frame(cx, handle, |window, cx| {
         window.dispatch_action(Box::new(CloseSettings), cx)
@@ -462,10 +463,7 @@ async fn dragging_and_zooming_preserve_broadcast_membership_and_connections(
         window.dispatch_action(Box::new(ToggleZoom), cx);
     });
     in_frame(cx, handle, |window, cx| {
-        assert_eq!(
-            window.find("toggle-terminal-broadcast").label(),
-            Some("广播中 · 2 个终端")
-        );
+        assert!(window.try_find("toggle-terminal-broadcast").is_none());
         window.input("zoomed", cx);
         window.dispatch_action(Box::new(ToggleZoom), cx);
     });
@@ -495,10 +493,7 @@ async fn dragging_and_zooming_preserve_broadcast_membership_and_connections(
             })
             .count();
         assert_eq!(shown, 1);
-        assert_eq!(
-            window.find("toggle-terminal-broadcast").label(),
-            Some("广播中 · 2 个终端")
-        );
+        assert!(window.try_find("toggle-terminal-broadcast").is_none());
         assert_eq!(
             window
                 .find(("broadcast-remote", INITIAL_STAGING_TERMINAL))

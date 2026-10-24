@@ -1,67 +1,30 @@
-//! The workspace's share of port forwarding: the sidebar's switch, the
+//! The workspace's share of port forwarding: its management window, the
 //! commands of the forward list, and what a running forward reports.
 
 use std::rc::Rc;
 
-use gpui_kit::component::{WindowExt as _, dock::DockPlacement, notification::Notification};
+use gpui_kit::component::{WindowExt as _, notification::Notification};
 use gpui_kit::*;
 
-use crate::app::{
-    DeleteForward, EditForward, NewForward, ShowForwards, ShowHosts, StartForward, StopForward,
-};
+use crate::app::{DeleteForward, EditForward, NewForward, ShowForwards, StartForward, StopForward};
 use crate::forward::{ForwardManagerEvent, open_forward_dialog};
 use crate::host::ForwardId;
 use crate::i18n::t;
 use crate::shared::confirm_delete;
 
 use super::{
-    sidebar::SidebarMode,
+    host_manager::ManagerSection,
     workspace_view::{PromptOwner, Workspace},
 };
 
 impl Workspace {
-    /// What the left dock is showing, or `None` while it is hidden.
-    pub(super) fn sidebar_showing(&self, cx: &App) -> Option<SidebarMode> {
-        self.dock_area
-            .read(cx)
-            .is_dock_open(DockPlacement::Left)
-            .then(|| self.sidebar.read(cx).mode())
-    }
-
-    /// Show one of the sidebar's lists, opening the sidebar if it is hidden.
-    pub(super) fn show_sidebar(
-        &mut self,
-        mode: SidebarMode,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if !self.dock_area.read(cx).is_dock_open(DockPlacement::Left) {
-            self.dock_area.update(cx, |area, cx| {
-                area.toggle_dock(DockPlacement::Left, window, cx);
-            });
-        }
-        self.sidebar
-            .update(cx, |sidebar, cx| sidebar.show(mode, window, cx));
-        // The title bar marks the list being shown.
-        cx.notify();
-    }
-
-    pub(super) fn on_show_hosts(
-        &mut self,
-        _: &ShowHosts,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.show_sidebar(SidebarMode::Hosts, window, cx);
-    }
-
     pub(super) fn on_show_forwards(
         &mut self,
         _: &ShowForwards,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.show_sidebar(SidebarMode::Forwards, window, cx);
+        self.show_host_manager(ManagerSection::Forwards, window, cx);
     }
 
     pub(super) fn on_new_forward(
@@ -180,11 +143,20 @@ impl Workspace {
                     .forward(*id)
                     .map(|rule| rule.title())
                     .unwrap_or_default();
-                window.push_notification(
-                    Notification::error(reason.clone())
-                        .title(t!("workspace.forward.stopped", title = title)),
-                    cx,
-                );
+                let notification = Notification::error(reason.clone())
+                    .title(t!("workspace.forward.stopped", title = title));
+                if let Some(target) = self
+                    .host_manager_window()
+                    .filter(|target| *target != window.window_handle())
+                {
+                    cx.defer(move |cx| {
+                        let _ = target.update(cx, |_, window, cx| {
+                            window.push_notification(notification, cx)
+                        });
+                    });
+                } else {
+                    window.push_notification(notification, cx);
+                }
             }
         }
     }
@@ -202,7 +174,7 @@ impl Workspace {
             matches!(owner, PromptOwner::Forward(forward, generation)
                 if *forward == id && Some(*generation) != keep)
         };
-        self.prompt_queue.retain(|(owner, _, _)| !stale(owner));
+        self.prompt_queue.retain(|(owner, _, _, _)| !stale(owner));
         if let Some((owner, _, _)) = self.active_prompt
             && stale(&owner)
         {

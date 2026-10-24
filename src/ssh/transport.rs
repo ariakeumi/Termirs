@@ -159,7 +159,7 @@ impl SshTerminalTransport {
         let mut side_queue: VecDeque<Side<'_>> = VecDeque::new();
         let mut side: Option<Side<'_>> = None;
 
-        let mut exit_code = 0;
+        let mut exit_code = None;
         let mut exit_signal = None;
         loop {
             if side.is_none() {
@@ -183,7 +183,7 @@ impl SshTerminalTransport {
                             let _ = channel.close().await;
                             let _ = handle.disconnect(
                                 russh::Disconnect::ByApplication,
-                                "ShellRS closed the terminal",
+                                "Termirs closed the terminal",
                                 "zh-CN",
                             ).await;
                         }).await;
@@ -248,18 +248,33 @@ impl SshTerminalTransport {
                             break;
                         }
                     }
-                    Some(ChannelMsg::ExitStatus { exit_status }) => exit_code = exit_status,
+                    Some(ChannelMsg::ExitStatus { exit_status }) => exit_code = Some(exit_status),
                     Some(ChannelMsg::ExitSignal { signal_name, .. }) => {
                         exit_signal = Some(format!("{signal_name:?}"));
                     }
-                    Some(ChannelMsg::Eof | ChannelMsg::Close) | None => break,
+                    // EOF ends output, not the channel: OpenSSH may send the
+                    // exit status afterwards. Keep reading until CLOSE.
+                    Some(ChannelMsg::Close) | None => break,
                     _ => {}
                 }
             }
         }
+        // A vanished connection is not a successful shell exit. Release the
+        // futures borrowing the handle before collecting its transport error.
+        if exit_code.is_none() && exit_signal.is_none() {
+            drop(side);
+            drop(side_queue);
+            drop(ping);
+            if handle.is_closed()
+                && let Ok(Err(error)) = tokio::time::timeout(SHUTDOWN_TIMEOUT, handle).await
+            {
+                bail!(t!("ssh.terminal.disconnected_reason", error = error));
+            }
+            bail!(t!("ssh.terminal.disconnected"));
+        }
         let _ = events
             .send(TerminalTransportEvent::Exited {
-                code: exit_code,
+                code: exit_code.unwrap_or(0),
                 signal: exit_signal,
             })
             .await;
@@ -640,9 +655,18 @@ mod tests {
                 .input
                 .extend_from_slice(data);
             if data == b"exit\n" {
+                session.eof(channel)?;
                 session.exit_status_request(channel, 7)?;
+                session.close(channel)?;
+            } else if data == b"exit-zero\n" {
+                session.eof(channel)?;
+                session.exit_status_request(channel, 0)?;
+                session.close(channel)?;
+            } else if data == b"close-without-status\n" {
                 session.eof(channel)?;
                 session.close(channel)?;
+            } else if data == b"disconnect-without-status\n" {
+                session.disconnect(russh::Disconnect::ByApplication, "test disconnect", "en")?;
             } else {
                 session.data(channel, data.to_vec())?;
             }
@@ -900,6 +924,64 @@ mod tests {
             .unwrap();
         worker.join().unwrap();
         report
+    }
+
+    #[test]
+    fn terminal_requires_an_exit_status_but_preserves_explicit_zero() {
+        for (command, expected_success) in [
+            ("exit-zero\n", true),
+            ("close-without-status\n", false),
+            ("disconnect-without-status\n", false),
+        ] {
+            let server = start_server(TestAuth::Password).expect("loopback server");
+            let directory = tempfile::tempdir().unwrap();
+            let keychain = Arc::new(InMemorySecretStore::default());
+            let host = password_host(server.port);
+            keychain
+                .set(
+                    &SecretRef::password("tester", "127.0.0.1", server.port),
+                    TEST_PASSWORD,
+                )
+                .unwrap();
+            let known_hosts = directory.path().join("known_hosts");
+            trust_server(server.port, &known_hosts);
+            let provider = SshTerminalTransportProvider::with_connector(SshConnector::new(
+                known_hosts,
+                keychain,
+            ));
+            let factory = provider.factory_for(&HostLogin::of(&host, None));
+            let (command_tx, command_rx) = mpsc::channel();
+            let (event_tx, event_rx) = async_channel::unbounded();
+            let (done_tx, done_rx) = mpsc::channel();
+            let worker = thread::spawn(move || {
+                let result = factory
+                    .create()
+                    .run(TerminalSize::DEFAULT, command_rx, event_tx);
+                done_tx.send(result).unwrap();
+            });
+            match event_rx.recv_blocking().unwrap() {
+                TerminalTransportEvent::Started => {}
+                event => panic!("unexpected event before start: {event:?}"),
+            }
+            command_tx
+                .send(TerminalTransportCommand::Write(command.as_bytes().to_vec()))
+                .unwrap();
+            let result = done_rx
+                .recv_timeout(Duration::from_secs(5))
+                .expect("SSH worker must finish");
+            worker.join().unwrap();
+            let exited = std::iter::from_fn(|| event_rx.try_recv().ok()).any(|event| {
+                matches!(
+                    event,
+                    TerminalTransportEvent::Exited {
+                        code: 0,
+                        signal: None
+                    }
+                )
+            });
+            assert_eq!(result.is_ok(), expected_success, "{command}: {result:?}");
+            assert_eq!(exited, expected_success, "{command}");
+        }
     }
 
     #[test]
@@ -1186,7 +1268,7 @@ mod tests {
         let (result, stdout, _) = run_cli_command(&host, &known_hosts, keychain);
         let error = result.unwrap_err();
         assert_eq!(error.kind, crate::ssh::ExecErrorKind::HostKeyUnknown);
-        assert!(error.message.contains("请先在 ShellRS 中连接一次"));
+        assert!(error.message.contains("请先在 Termirs 中连接一次"));
         assert!(stdout.is_empty());
         // Nothing was trusted on the user's behalf.
         assert!(!known_hosts.exists());

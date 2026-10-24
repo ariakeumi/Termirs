@@ -3,7 +3,7 @@
 //! keeps its place between the default's background and text, now between
 //! the theme's; each color becomes the theme's ANSI color of its hue. What
 //! gpui-kit derives from these (hover, active, tab bar, status bar …)
-//! follows. ShellRS Light is gpui-kit's light theme unchanged, ShellRS Dark
+//! follows. Termirs Light is gpui-kit's light theme unchanged, Termirs Dark
 //! its dark theme with the grays lifted off black.
 
 use std::rc::Rc;
@@ -35,12 +35,12 @@ pub(super) fn ui_theme(theme: &'static TerminalTheme, cx: &App) -> Rc<ThemeConfi
     }
 }
 
-/// ShellRS Light: the app is gpui-kit's light theme as it is.
+/// Termirs Light: the app is gpui-kit's light theme as it is.
 fn is_gpui_kits(theme: &'static TerminalTheme) -> bool {
     theme == TerminalTheme::default_for(ThemeMode::Light)
 }
 
-/// ShellRS Dark's grays, from WeChat's dark mode, which is easy on the eyes
+/// Termirs Dark's grays, from WeChat's dark mode, which is easy on the eyes
 /// where gpui-kit's near black glares: each of gpui-kit's neutral grays (by
 /// value) and what it becomes. Grays between two are mixed from them.
 const SOFT_DARK: [(u8, u32); 13] = [
@@ -67,7 +67,7 @@ const SOFT_DARK: [(u8, u32); 13] = [
     (0xff, 0xe8e8ec),
 ];
 
-/// ShellRS Dark: gpui-kit's dark theme with its grays moved onto
+/// Termirs Dark: gpui-kit's dark theme with its grays moved onto
 /// `SOFT_DARK`. Its colors (selection, success, danger …) stay gpui-kit's.
 fn soften(default: &ThemeConfig, theme: &TerminalTheme) -> ThemeConfig {
     let mut config = serde_json::to_value(default).expect("a theme is plain data");
@@ -383,7 +383,7 @@ mod tests {
             gpui_kit::component::init(cx);
             apply(TerminalTheme::default_for(ThemeMode::Dark), cx);
             let app = cx.theme();
-            assert_eq!(app.theme_name().as_ref(), "ShellRS Dark");
+            assert_eq!(app.theme_name().as_ref(), "Termirs Dark");
             // Bars a step lighter than the background, borders another.
             assert_close(app.background.to_rgb(), color(0x1e1e1f), "background");
             assert_close(app.title_bar.to_rgb(), color(0x2f2f30), "title bar");

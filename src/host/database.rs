@@ -96,7 +96,7 @@ const SCHEMA_VERSION: i64 = 19;
 ///   last of those, `NULL` before one. A saved terminal's `directory` is
 ///   the folder of this computer its shell was last in, `NULL` before it
 ///   said.
-/// - **saved_terminal_tabs** lists the saved terminals open when ShellRS
+/// - **saved_terminal_tabs** lists the saved terminals open when Termirs
 ///   last had them, in tab order, rewritten whole: the next launch opens
 ///   them again. They go with their terminal; one at most is `front`.
 ///
@@ -456,7 +456,7 @@ pub struct StoredData {
     pub terminal_groups: Vec<TerminalGroup>,
     /// Saved local terminals in id order.
     pub saved_terminals: Vec<SavedTerminal>,
-    /// The saved terminals open when ShellRS last had them, in tab order.
+    /// The saved terminals open when Termirs last had them, in tab order.
     pub saved_terminal_tabs: Vec<SavedTerminalTab>,
 }
 
@@ -1526,7 +1526,7 @@ fn write_jumps(connection: &Connection, host: &Host) -> rusqlite::Result<()> {
 /// version at a time. Each step is one transaction, so a file is never left
 /// between versions.
 ///
-/// A file from a newer ShellRS is refused and left as it is: this version
+/// A file from a newer Termirs is refused and left as it is: this version
 /// does not know what the newer tables mean, and writing to them could lose
 /// what the newer version saved. That happens after going back to an older
 /// version by hand, the one way an update can be undone. A file older than
@@ -1688,7 +1688,7 @@ mod tests {
         let Err(error) = HostDatabase::open(&path) else {
             panic!("a newer database opened");
         };
-        assert!(error.to_string().contains("更新版本的 ShellRS"), "{error}");
+        assert!(error.to_string().contains("更新版本的 Termirs"), "{error}");
         let version: i64 = Connection::open(&path)
             .unwrap()
             .pragma_query_value(None, "user_version", |row| row.get(0))

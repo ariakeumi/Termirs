@@ -60,10 +60,10 @@ impl TerminalFont {
     }
 }
 
-/// The width of one cell: the font's `M`, on whole device pixels like the
-/// row height. Every column then starts on a pixel and a character looks the
-/// same in each; at a fractional width each column falls at another point
-/// between pixels and its strokes blur, at 150 % scaling most of all.
+/// The width of one cell: the font's `M`, rounded up to whole device pixels.
+/// Rounding to the nearest pixel can squeeze the font's natural advance,
+/// crowding wide glyphs such as `@` and `M`. Whole device pixels keep every
+/// column aligned without compressing the text, including at 150 % scaling.
 pub(super) fn cell_width(font: Font, size: Pixels, window: &Window) -> Pixels {
     let run = TextRun {
         len: 1,
@@ -77,7 +77,8 @@ pub(super) fn cell_width(font: Font, size: Pixels, window: &Window) -> Pixels {
         .text_system()
         .shape_line("M".into(), size, &[run], None)
         .width();
-    window.pixel_snap(width).max(px(1.))
+    let scale = window.scale_factor();
+    px((width.as_f32() * scale).ceil() / scale).max(px(1.))
 }
 
 /// Whether the system has `family`. GPUI substitutes another font for a
@@ -268,6 +269,15 @@ mod tests {
         // 8.4 px, 16.8 device pixels.
         assert_eq!(width(14.), px(8.5));
         assert_eq!(width(15.), px(9.));
+        // Rounding 14.4 or 19.2 device pixels down would crowd the text.
+        assert_eq!(width(12.), px(7.5));
+        assert_eq!(width(16.), px(10.));
+
+        for size in 10..=28 {
+            let cell = width(size as f32).as_f32();
+            assert!(cell >= size as f32 * 0.6, "size {size} compresses the font");
+            assert_eq!((cell * 2.).fract(), 0., "size {size} blurs the grid");
+        }
     }
 
     #[test]

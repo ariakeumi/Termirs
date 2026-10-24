@@ -18,7 +18,7 @@ use std::{
 #[cfg(unix)]
 use tokio::sync::watch;
 
-use super::link::OpenLink;
+use super::link::OpenTarget;
 use super::manage::{
     CliChange, CredentialSecrets, HostSecrets, credential_details, credential_matches,
     credential_not_found, credential_secrets, host_details, host_info, host_not_found,
@@ -206,9 +206,9 @@ struct Shared {
     credentials: RwLock<Vec<CliCredential>>,
     backend: Arc<dyn CliBackend>,
     /// Set when ShellRS was opened again while this one runs, with the
-    /// links it was opened with, until the app has come forward and opened
+    /// targets it was opened with, until the app has come forward and opened
     /// them.
-    activation: Mutex<Option<Vec<OpenLink>>>,
+    activation: Mutex<Option<Vec<OpenTarget>>>,
     /// Changes to hosts and credentials, oldest first, until the app takes
     /// them up: only the UI thread can change the store.
     changes: Mutex<VecDeque<PendingChange>>,
@@ -338,10 +338,10 @@ impl CliServer {
     }
 
     /// Whether ShellRS was opened again since this was last asked, and the
-    /// links it was opened with, oldest first: `Some` and empty for a plain
+    /// targets it was opened with, oldest first: `Some` and empty for a plain
     /// re-open. The request threads cannot reach the window, so the app asks
     /// here on a timer, then comes forward and opens them.
-    pub fn take_activation(&self) -> Option<Vec<OpenLink>> {
+    pub fn take_activation(&self) -> Option<Vec<OpenTarget>> {
         self.shared
             .activation
             .lock()

@@ -39,6 +39,12 @@ terminal.remote.send_break:
   en: Send break
 
 # Local terminal tab
+terminal.local.tab_title:
+  zh-CN: -zsh
+  en: -zsh
+terminal.local.tab_title_directory:
+  zh-CN: "%{name} · %{directory}"
+  en: "%{name} · %{directory}"
 terminal.local.title:
   zh-CN: 本地终端 %{number}
   en: Local terminal %{number}

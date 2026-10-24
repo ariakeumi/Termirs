@@ -58,7 +58,9 @@ fn open_processes(
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, cx| window.click("tool-processes", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-processes", cx)
+    });
     handle
 }
 
@@ -400,14 +402,18 @@ async fn the_processes_are_read_only_while_they_show(cx: &mut TestAppContext) {
     )
     .await;
 
-    in_frame(cx, handle, |window, cx| window.click("tool-processes", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-processes", cx)
+    });
     let hidden = factory.exec_count();
     cx.executor().advance_clock(Duration::from_secs(60));
     cx.run_until_parked();
     assert_eq!(factory.exec_count(), hidden);
 
     // Back, the list it had shows at once while it is read again.
-    in_frame(cx, handle, |window, cx| window.click("tool-processes", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-processes", cx)
+    });
     in_frame(cx, handle, |window, _| {
         assert_eq!(listed(window), [JAVA, NODE, SYSTEMD]);
     });

@@ -26,23 +26,23 @@ fn store_with_credential(secrets: Arc<InMemorySecretStore>) -> (HostStore, Crede
 }
 
 #[gpui_kit::test]
-async fn the_title_bar_switches_the_sidebar_to_credentials(cx: &mut TestAppContext) {
-    let (handle, _) = open_workspace_with_credentials(
+async fn the_credentials_command_opens_the_shared_management_window(cx: &mut TestAppContext) {
+    let (handle, workspace) = open_workspace_with_credentials(
         cx,
         HostStore::seed(),
         Arc::new(RecordingRemoteProvider::default()),
         Arc::new(FakeConnectionTester::default()),
     );
-    show_credentials(cx, handle).await;
+    let main = handle;
+    let handle = show_credentials(cx, handle).await;
     in_frame(cx, handle, |window, _| {
-        assert_eq!(window.find("show-credentials").checked(), Some(true));
-        assert_eq!(window.find("show-hosts").checked(), Some(false));
-        assert_eq!(window.find("show-forwards").checked(), Some(false));
+        assert!(window.try_find("show-hosts").is_none());
+
         assert_eq!(window.find("credential-empty").label(), Some("还没有凭据"));
         // The dock's toolbar follows the list; the settings footer stays.
         assert!(window.find("new-credential").visible());
         assert!(window.try_find("new-group").is_none());
-        assert!(window.find("open-settings").visible());
+        assert!(window.try_find("open-settings").is_none());
         assert!(window.try_find("host-search").is_none());
     });
 
@@ -55,11 +55,14 @@ async fn the_title_bar_switches_the_sidebar_to_credentials(cx: &mut TestAppConte
         assert_eq!(window.find("credential-search").focused(), Some(true));
     });
 
-    in_frame(cx, handle, |window, cx| window.click("show-hosts", cx));
-    in_frame(cx, handle, |window, _| {
-        assert!(window.find("host-search").visible());
+    let manager = open_host_manager(cx, main, &workspace);
+    in_frame(cx, manager, |window, _| {
+        assert!(window.find("host-search").visible())
+    });
+    assert_eq!(manager, handle);
+    in_frame(cx, main, |window, _| {
+        assert!(window.find("open-tabs").visible());
         assert!(window.try_find("credential-search").is_none());
-        assert_eq!(window.find("show-credentials").checked(), Some(false));
     });
 }
 
@@ -72,7 +75,7 @@ async fn a_new_password_credential_keeps_its_password_in_the_keychain(cx: &mut T
         Arc::new(RecordingRemoteProvider::default()),
         Arc::new(FakeConnectionTester::default()),
     );
-    show_credentials(cx, handle).await;
+    let handle = show_credentials(cx, handle).await;
     in_frame(cx, handle, |window, cx| {
         window.click("credential-empty-new", cx)
     });
@@ -127,7 +130,7 @@ async fn the_credential_kind_decides_which_fields_show(cx: &mut TestAppContext) 
         Arc::new(RecordingRemoteProvider::default()),
         Arc::new(FakeConnectionTester::default()),
     );
-    show_credentials(cx, handle).await;
+    let handle = show_credentials(cx, handle).await;
     in_frame(cx, handle, |window, cx| window.click("new-credential", cx));
     in_frame(cx, handle, |window, cx| {
         assert!(window.try_find("credential-key-path").is_none());
@@ -199,7 +202,7 @@ async fn the_credential_list_moves_with_the_arrow_keys_and_edits_on_enter(cx: &m
         Arc::new(RecordingRemoteProvider::default()),
         Arc::new(FakeConnectionTester::default()),
     );
-    show_credentials(cx, handle).await;
+    let handle = show_credentials(cx, handle).await;
     in_frame(cx, handle, |window, cx| {
         window.click(("credential-row", first.0), cx)
     });
@@ -232,7 +235,9 @@ async fn a_host_can_use_a_credential_instead_of_typing_a_login(cx: &mut TestAppC
         Arc::new(RecordingRemoteProvider::default()),
         Arc::new(FakeConnectionTester::default()),
     );
-    in_frame(cx, handle, |window, cx| window.click("new-host-panel", cx));
+    in_frame(cx, handle, |window, cx| {
+        window.dispatch_action(Box::new(shellrs::app::NewHost), cx)
+    });
     in_frame(cx, handle, |window, cx| {
         window.click("host-address", cx);
         window.input("10.0.1.12", cx);
@@ -369,7 +374,7 @@ async fn a_credentials_new_user_is_for_its_hosts_new_tabs(cx: &mut TestAppContex
     })
     .await;
     assert_eq!(remote.logins().len(), 2);
-    show_credentials(cx, handle).await;
+    let handle = show_credentials(cx, handle).await;
 
     // A new name changes no login: nothing reconnects.
     in_frame(cx, handle, |window, cx| {
@@ -457,7 +462,7 @@ async fn deleting_a_used_credential_leaves_its_hosts_connected_and_logging_in_on
     in_frame(cx, handle, |window, cx| {
         window.dispatch_action(Box::new(ConnectHost(host)), cx)
     });
-    show_credentials(cx, handle).await;
+    let handle = show_credentials(cx, handle).await;
     in_frame(cx, handle, |window, cx| {
         window.click(("credential-row", credential.0), cx);
         window.dispatch_action(Box::new(DeleteCredential(credential)), cx);
@@ -501,7 +506,8 @@ async fn a_long_credential_row_fits_the_smallest_window(cx: &mut TestAppContext)
         size(px(960.), px(600.)),
     );
     cx.run_until_parked();
-    show_credentials(cx, handle).await;
+    let handle = show_credentials(cx, handle).await;
+    cx.simulate_window_resize(handle.into(), size(px(480.), px(360.)));
     in_frame(cx, handle, |window, _| {
         let list = window.find("credential-list").bounds();
         let row = window.find(("credential-row", id.0)).bounds();
@@ -518,8 +524,11 @@ fn store_keeping_keys(data: &std::path::Path, secrets: Arc<InMemorySecretStore>)
 }
 
 /// Open 「生成密钥…」 from the empty credential list and wait for the key.
-async fn open_generate_key(cx: &mut TestAppContext, handle: WindowHandle<Root>) {
-    show_credentials(cx, handle).await;
+async fn open_generate_key(
+    cx: &mut TestAppContext,
+    handle: WindowHandle<Root>,
+) -> WindowHandle<Root> {
+    let handle = show_credentials(cx, handle).await;
     in_frame(cx, handle, |window, cx| {
         window.click("credential-empty-generate", cx)
     });
@@ -527,6 +536,7 @@ async fn open_generate_key(cx: &mut TestAppContext, handle: WindowHandle<Root>) 
         window.try_find("credential-public-key").is_some()
     })
     .await;
+    handle
 }
 
 #[gpui_kit::test]
@@ -539,7 +549,7 @@ async fn a_generated_key_shows_its_public_half_and_is_kept_by_shellrs(cx: &mut T
         Arc::new(RecordingRemoteProvider::default()),
         Arc::new(FakeConnectionTester::default()),
     );
-    open_generate_key(cx, handle).await;
+    let handle = open_generate_key(cx, handle).await;
     in_frame(cx, handle, |window, cx| {
         // A key credential with its key made already, waiting for a name.
         assert_eq!(window.find("credential-name").focused(), Some(true));
@@ -587,7 +597,7 @@ async fn a_generated_key_with_a_passphrase_is_saved_encrypted(cx: &mut TestAppCo
         Arc::new(RecordingRemoteProvider::default()),
         Arc::new(FakeConnectionTester::default()),
     );
-    open_generate_key(cx, handle).await;
+    let handle = open_generate_key(cx, handle).await;
     in_frame(cx, handle, |window, cx| {
         window.input("部署", cx);
         window.click("credential-passphrase", cx);
@@ -626,7 +636,7 @@ async fn a_pasted_key_is_checked_then_kept_by_shellrs(cx: &mut TestAppContext) {
         Arc::new(RecordingRemoteProvider::default()),
         Arc::new(FakeConnectionTester::default()),
     );
-    show_credentials(cx, handle).await;
+    let handle = show_credentials(cx, handle).await;
     in_frame(cx, handle, |window, cx| window.click("new-credential", cx));
     in_frame(cx, handle, |window, cx| {
         window.input("个人", cx);
@@ -692,7 +702,7 @@ async fn a_kept_key_is_deleted_when_its_credential_turns_to_a_password(cx: &mut 
         Arc::new(RecordingRemoteProvider::default()),
         Arc::new(FakeConnectionTester::default()),
     );
-    show_credentials(cx, handle).await;
+    let handle = show_credentials(cx, handle).await;
     in_frame(cx, handle, |window, cx| {
         window.click(("credential-row", credential.0), cx);
         window.dispatch_action(Box::new(EditCredential(credential)), cx);
@@ -709,7 +719,7 @@ async fn a_kept_key_is_deleted_when_its_credential_turns_to_a_password(cx: &mut 
     in_frame(cx, handle, |window, cx| {
         assert_eq!(
             window.find("credential-kept-key-note").label(),
-            Some("保存后，ShellRS 保存的原私钥会被删除。")
+            Some("保存后，Termirs 保存的原私钥会被删除。")
         );
         window.click("commit", cx);
     });
@@ -734,7 +744,7 @@ async fn a_key_credentials_public_key_is_copied_from_its_file(cx: &mut TestAppCo
         Arc::new(RecordingRemoteProvider::default()),
         Arc::new(FakeConnectionTester::default()),
     );
-    show_credentials(cx, handle).await;
+    let handle = show_credentials(cx, handle).await;
     in_frame(cx, handle, |window, cx| {
         window.click(("credential-row", credential.0), cx);
         window.dispatch_action(Box::new(CopyCredentialPublicKey(credential)), cx);
@@ -758,7 +768,7 @@ async fn a_segment_that_cannot_be_chosen_stays_unchosen(cx: &mut TestAppContext)
         Arc::new(RecordingRemoteProvider::default()),
         Arc::new(FakeConnectionTester::default()),
     );
-    show_credentials(cx, handle).await;
+    let handle = show_credentials(cx, handle).await;
     in_frame(cx, handle, |window, cx| window.click("new-credential", cx));
     in_frame(cx, handle, |window, cx| {
         window.within("credential-kind").click(1usize, cx);
@@ -793,7 +803,7 @@ async fn a_credential_rows_tooltip_opens_beside_it_with_a_keys_whole_path(cx: &m
         Arc::new(RecordingRemoteProvider::default()),
         Arc::new(FakeConnectionTester::default()),
     );
-    show_credentials(cx, handle).await;
+    let handle = show_credentials(cx, handle).await;
     let hover = |cx: &mut TestAppContext, id: CredentialId| {
         in_frame(cx, handle, |window, cx| {
             window.hover(("credential-row", id.0), cx)
@@ -813,7 +823,9 @@ async fn a_credential_rows_tooltip_opens_beside_it_with_a_keys_whole_path(cx: &m
         assert_eq!(note.label(), Some("/Users/someone/.ssh/id_ed25519"));
         assert!(note.bounds().top() >= line.bounds().bottom());
         let row = window.find(("credential-row", key.0)).bounds();
-        assert!(line.bounds().left() >= row.right());
+        assert!(line.bounds().top() >= row.bottom());
+        assert!(line.bounds().left() >= px(0.));
+        assert!(line.bounds().right() <= window.viewport_size().width);
     });
 
     // A password has no file: the detail stands alone.

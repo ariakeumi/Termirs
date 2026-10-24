@@ -46,7 +46,7 @@ pub fn bring_forward(window: &mut Window, cx: &mut App) {
 }
 
 /// Put ShellRS away, when 显示或隐藏 ShellRS is pressed with it in front:
-/// hidden on macOS, as ⌘H does, minimized elsewhere.
+/// hidden on macOS, minimized elsewhere. ⌘H also hides on macOS.
 pub fn send_back(window: &mut Window, cx: &mut App) {
     #[cfg(target_os = "macos")]
     {

@@ -39,72 +39,34 @@ async fn wait_for_forward_status(
 }
 
 #[gpui_kit::test]
-async fn the_title_bar_switches_the_sidebar_between_hosts_and_forwards(cx: &mut TestAppContext) {
-    let (handle, _) = open_workspace_with_forwards(
+async fn hosts_and_forwards_share_the_management_window(cx: &mut TestAppContext) {
+    let (handle, workspace) = open_workspace_with_forwards(
         cx,
         HostStore::seed(),
         Arc::new(FakeForwardProvider::default()),
     );
-    cx.run_until_parked();
-    let showing = |cx: &mut TestAppContext, id: &'static str| {
-        in_frame(cx, handle, |window, _| {
-            window.try_find(id).is_some_and(|element| element.visible())
-        })
-    };
-
-    // Hosts come first, and the switch says so.
-    assert!(showing(cx, "host-search"));
-    assert!(!showing(cx, "forward-search"));
-    assert!(showing(cx, "new-group"));
     in_frame(cx, handle, |window, _| {
-        assert_eq!(window.find("show-hosts").checked(), Some(true));
-        assert_eq!(window.find("show-forwards").checked(), Some(false));
-        // A new host, the usual addition, comes before a new group.
+        assert!(window.try_find("host-search").is_none());
+        assert!(window.try_find("forward-search").is_none());
+    });
+    let main = handle;
+    let handle = show_forwards(cx, handle).await;
+    in_frame(cx, handle, |window, _| {
+        assert!(window.find("new-forward").visible());
+
+        assert!(window.try_find("open-settings").is_none());
+    });
+    let manager = open_host_manager(cx, main, &workspace);
+    in_frame(cx, manager, |window, _| {
+        assert!(window.find("host-search").visible());
         let host = window.find("new-host-panel").bounds();
         let group = window.find("new-group").bounds();
-        assert!(host.right() <= group.left(), "{host:?} {group:?}");
+        assert!(host.right() <= group.left());
     });
-
-    show_forwards(cx, handle).await;
-    assert!(!showing(cx, "host-search"));
-    // The dock's title bar and toolbar follow the list.
-    assert!(showing(cx, "new-forward"));
-    assert!(!showing(cx, "new-group"));
-    // What both lists share stays.
-    assert!(showing(cx, "open-settings"));
-    in_frame(cx, handle, |window, _| {
-        assert_eq!(window.find("show-hosts").checked(), Some(false));
-        assert_eq!(window.find("show-forwards").checked(), Some(true));
-        assert_eq!(window.find("forward-empty").label(), Some("还没有端口转发"));
-    });
-
-    // The search shortcut goes to the list that is up.
-    in_frame(cx, handle, |window, cx| {
-        window.activate_window();
-        window.dispatch_action(Box::new(FocusSearch), cx);
-    });
-    in_frame(cx, handle, |window, _| {
-        assert_eq!(window.find("forward-search").focused(), Some(true));
-    });
-
-    // Hidden, the sidebar marks neither; picking a list brings it back.
-    in_frame(cx, handle, |window, cx| {
-        window.dispatch_action(Box::new(ToggleHostPanel), cx);
-    });
-    assert!(!showing(cx, "forward-search"));
-    in_frame(cx, handle, |window, _| {
-        assert_eq!(window.find("show-forwards").checked(), Some(false));
-    });
-    in_frame(cx, handle, |window, cx| window.click("show-hosts", cx));
-    assert!(showing(cx, "host-search"));
-    assert!(!showing(cx, "forward-search"));
-    // And the host list still takes its own commands.
-    in_frame(cx, handle, |window, cx| {
-        window.activate_window();
-        window.dispatch_action(Box::new(FocusSearch), cx);
-    });
-    in_frame(cx, handle, |window, _| {
-        assert_eq!(window.find("host-search").focused(), Some(true));
+    assert_eq!(manager, handle);
+    in_frame(cx, main, |window, _| {
+        assert!(window.find("open-tabs").visible());
+        assert!(window.try_find("forward-search").is_none());
     });
 }
 
@@ -116,7 +78,7 @@ async fn a_forward_is_created_edited_and_deleted_through_its_dialog(cx: &mut Tes
         Arc::new(FakeForwardProvider::default()),
     );
     cx.run_until_parked();
-    show_forwards(cx, handle).await;
+    let handle = show_forwards(cx, handle).await;
     // The second host of the list, which the test picks below. It is not
     // the one whose tab is in front: a new rule does not take that one.
     let host = cx.update(|cx| {
@@ -261,7 +223,7 @@ async fn a_remote_forward_swaps_the_machines_in_the_picture_and_the_labels(
     let (handle, workspace) =
         open_workspace_with_forwards(cx, store, Arc::new(FakeForwardProvider::default()));
     cx.run_until_parked();
-    show_forwards(cx, handle).await;
+    let handle = show_forwards(cx, handle).await;
     in_frame(cx, handle, |window, cx| {
         window.click(("forward-row", id.0), cx);
         window.dispatch_action(Box::new(EditForward(id)), cx);
@@ -320,7 +282,7 @@ async fn a_forward_starts_and_stops_from_its_row_and_from_the_keyboard(cx: &mut 
     let provider = Arc::new(FakeForwardProvider::default());
     let (handle, workspace) = open_workspace_with_forwards(cx, store, provider.clone());
     cx.run_until_parked();
-    show_forwards(cx, handle).await;
+    let handle = show_forwards(cx, handle).await;
     wait_for_forward_status(cx, handle, first, "已停止").await;
     assert!(provider.runs().is_empty());
 
@@ -334,11 +296,7 @@ async fn a_forward_starts_and_stops_from_its_row_and_from_the_keyboard(cx: &mut 
     assert_eq!(runs[0].rule.id, first);
     assert_eq!(runs[0].host, HostId(DB_01));
     in_frame(cx, handle, |window, _| {
-        // The title bar says a forward is running, whatever list is up.
-        assert_eq!(
-            window.find("show-forwards").label(),
-            Some("端口转发，1 条运行中")
-        );
+        assert!(window.try_find("show-forwards").is_none());
     });
 
     // What it carries shows in the row.
@@ -395,7 +353,7 @@ async fn a_forward_question_is_answered_in_a_dialog_and_declining_stops_the_forw
     let provider = Arc::new(FakeForwardProvider::with_script(ForwardScript::AsksTrust));
     let (handle, _) = open_workspace_with_forwards(cx, store, provider.clone());
     cx.run_until_parked();
-    show_forwards(cx, handle).await;
+    let handle = show_forwards(cx, handle).await;
 
     in_frame(cx, handle, |window, cx| {
         window.click(("forward-toggle", id.0), cx)
@@ -448,7 +406,7 @@ async fn stopping_a_forward_takes_its_open_question_with_it(cx: &mut TestAppCont
     let provider = Arc::new(FakeForwardProvider::with_script(ForwardScript::AsksTrust));
     let (handle, _) = open_workspace_with_forwards(cx, store, provider.clone());
     cx.run_until_parked();
-    show_forwards(cx, handle).await;
+    let handle = show_forwards(cx, handle).await;
     in_frame(cx, handle, |window, cx| {
         window.dispatch_action(Box::new(StartForward(id)), cx);
     });
@@ -489,14 +447,10 @@ async fn a_forward_that_fails_says_so_in_its_row_and_in_a_notification(cx: &mut 
             ForwardStatus::Failed("本机端口 8080 已被占用".into())
         );
     });
-    show_forwards(cx, handle).await;
+    let handle = show_forwards(cx, handle).await;
     wait_for_forward_status(cx, handle, id, "已停止：本机端口 8080 已被占用").await;
     in_frame(cx, handle, |window, _| {
-        // Nothing is running, so the title bar counts nothing.
-        assert_ne!(
-            window.find("show-forwards").label(),
-            Some("端口转发，1 条运行中")
-        );
+        assert!(window.try_find("show-forwards").is_none());
     });
 
     // Starting it again clears the old failure while it tries.
@@ -504,7 +458,7 @@ async fn a_forward_that_fails_says_so_in_its_row_and_in_a_notification(cx: &mut 
         window.click(("forward-toggle", id.0), cx)
     });
     cx.wait_for(handle.into(), Duration::from_secs(2), |window, cx| {
-        window.notifications(cx).len() == 2
+        window.notifications(cx).len() == 1
     })
     .await;
     assert_eq!(provider.runs().len(), 2);
@@ -516,7 +470,7 @@ async fn a_running_forward_reports_reconnecting_and_giving_up(cx: &mut TestAppCo
     let provider = Arc::new(FakeForwardProvider::default());
     let (handle, _) = open_workspace_with_forwards(cx, store, provider.clone());
     cx.run_until_parked();
-    show_forwards(cx, handle).await;
+    let handle = show_forwards(cx, handle).await;
     in_frame(cx, handle, |window, cx| {
         window.click(("forward-toggle", id.0), cx)
     });
@@ -547,11 +501,7 @@ async fn a_running_forward_reports_reconnecting_and_giving_up(cx: &mut TestAppCo
         .unwrap();
     wait_for_forward_status(cx, handle, id, "连接中断，正在重连（1/3）").await;
     in_frame(cx, handle, |window, _| {
-        // Still trying counts as running: the switch offers to stop it.
-        assert_eq!(
-            window.find("show-forwards").label(),
-            Some("端口转发，1 条运行中")
-        );
+        assert!(window.try_find("show-forwards").is_none());
     });
 
     run.events
@@ -578,7 +528,7 @@ async fn deleting_a_host_or_its_group_takes_the_forwards_through_it(cx: &mut Tes
     let provider = Arc::new(FakeForwardProvider::default());
     let (handle, workspace) = open_workspace_with_forwards(cx, store, provider.clone());
     cx.run_until_parked();
-    show_forwards(cx, handle).await;
+    let handle = show_forwards(cx, handle).await;
     in_frame(cx, handle, |window, cx| {
         window.click(("forward-toggle", database.0), cx)
     });
@@ -635,7 +585,7 @@ async fn a_running_forward_restarts_when_its_rule_changes(cx: &mut TestAppContex
     let provider = Arc::new(FakeForwardProvider::default());
     let (handle, workspace) = open_workspace_with_forwards(cx, store, provider.clone());
     cx.run_until_parked();
-    show_forwards(cx, handle).await;
+    let handle = show_forwards(cx, handle).await;
     in_frame(cx, handle, |window, cx| {
         window.click(("forward-toggle", id.0), cx)
     });
@@ -709,7 +659,7 @@ async fn forwards_marked_to_start_with_the_application_do(cx: &mut TestAppContex
     })
     .await;
     assert_eq!(provider.runs()[0].rule.id, automatic);
-    show_forwards(cx, handle).await;
+    let handle = show_forwards(cx, handle).await;
     wait_for_forward_status(cx, handle, automatic, "运行中").await;
     cx.update(|cx| {
         let forwards = workspace.read(cx).forwards().read(cx);
@@ -799,7 +749,8 @@ async fn the_forward_dialog_and_a_long_row_fit_the_smallest_window(cx: &mut Test
         window_size,
     );
     cx.run_until_parked();
-    show_forwards(cx, handle).await;
+    let handle = show_forwards(cx, handle).await;
+    cx.simulate_window_resize(handle.into(), size(px(480.), px(360.)));
 
     in_frame(cx, handle, |window, _| {
         // A long name is cut short; the switch at the row's end stays.
@@ -825,12 +776,12 @@ async fn the_forward_dialog_and_a_long_row_fit_the_smallest_window(cx: &mut Test
         let commit = window.find("commit");
         assert!(commit.visible());
         assert!(
-            commit.bounds().bottom() <= window_size.height,
+            commit.bounds().bottom() <= window.viewport_size().height,
             "the commit button must stay inside the window: {:?}",
             commit.bounds()
         );
         let dialog = window.find("forward-diagram").bounds();
-        assert!(dialog.right() <= window_size.width);
+        assert!(dialog.right() <= window.viewport_size().width);
     });
 }
 
@@ -846,7 +797,7 @@ async fn the_three_kinds_of_forward_share_one_row(cx: &mut TestAppContext) {
     let (handle, _) =
         open_workspace_with_forwards(cx, store, Arc::new(FakeForwardProvider::default()));
     cx.run_until_parked();
-    show_forwards(cx, handle).await;
+    let handle = show_forwards(cx, handle).await;
     in_frame(cx, handle, |window, cx| {
         window.click(("forward-row", id.0), cx);
         window.dispatch_action(Box::new(EditForward(id)), cx);
@@ -915,7 +866,7 @@ async fn the_forward_diagram_keeps_showing_its_flow(cx: &mut TestAppContext) {
     };
 
     in_frame(cx, handle, |window, cx| {
-        window.click("host-search", cx);
+        window.click(("terminal", INITIAL_WEB_TERMINAL), cx);
         window.dispatch_action(Box::new(EditForward(id)), cx);
     });
     let entrance = dot(cx).expect("the flow sets out when the dialog opens");
@@ -980,7 +931,7 @@ async fn a_forward_rows_tooltip_opens_beside_it_and_makes_way_for_its_switch(
     let (handle, _) =
         open_workspace_with_forwards(cx, store, Arc::new(FakeForwardProvider::default()));
     cx.run_until_parked();
-    show_forwards(cx, handle).await;
+    let handle = show_forwards(cx, handle).await;
     let row = ("forward-row", id.0);
     let hover = |cx: &mut TestAppContext, target: ElementId| {
         in_frame(cx, handle, |window, cx| window.hover(target, cx));
@@ -996,11 +947,11 @@ async fn a_forward_rows_tooltip_opens_beside_it_and_makes_way_for_its_switch(
             tooltip.label(),
             Some("本地转发 · 8080 → db.internal:3306 · db-01")
         );
-        // Beside the row, as the host list's, so it never covers the rows
-        // below.
+        // Full-width management rows leave room below for their tooltip.
         let row = window.find(row).bounds();
-        assert!(tooltip.bounds().left() >= row.right());
-        assert!((tooltip.bounds().center().y - row.center().y).abs() < px(2.));
+        assert!(tooltip.bounds().top() >= row.bottom());
+        assert!(tooltip.bounds().left() >= px(0.));
+        assert!(tooltip.bounds().right() <= window.viewport_size().width);
     });
 
     // The switch has a tooltip of its own, and the row's makes way for it.

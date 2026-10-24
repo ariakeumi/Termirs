@@ -45,7 +45,9 @@ async fn open_snippets(
         window.activate_window();
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, cx| window.click("tool-snippets", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-snippets", cx)
+    });
     let terminal = RemoteTerminalId(INITIAL_WEB_TERMINAL);
     cx.wait_for(handle.into(), Duration::from_secs(5), |_, cx| {
         remote_lifecycle(&workspace, terminal, cx).accepts_input()

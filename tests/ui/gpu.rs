@@ -79,7 +79,7 @@ fn open_gpu(
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, cx| window.click("tool-gpu", cx));
+    in_frame(cx, handle, |window, cx| toggle_tool(window, "tool-gpu", cx));
     (handle, workspace)
 }
 
@@ -187,7 +187,7 @@ async fn eight_gpus_show_their_sums_then_three_lines_each(cx: &mut TestAppContex
     // Every two seconds while it shows; hidden, no more.
     cx.executor().advance_clock(Duration::from_secs(2));
     wait_for_execs(cx, handle, &factory, 2).await;
-    in_frame(cx, handle, |window, cx| window.click("tool-gpu", cx));
+    in_frame(cx, handle, |window, cx| toggle_tool(window, "tool-gpu", cx));
     cx.executor().advance_clock(Duration::from_secs(10));
     cx.run_until_parked();
     assert_eq!(factory.exec_count(), 2);
@@ -384,14 +384,14 @@ fn the_gpu_tool_is_not_offered_on_a_host_known_not_to_run_linux(cx: &mut TestApp
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, _| {
-        assert!(window.find("tool-gpu").visible());
+    in_frame(cx, handle, |window, cx| {
+        assert!(tool_offered(window, "tool-gpu", cx));
     });
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_STAGING_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, _| {
-        assert!(window.try_find("tool-gpu").is_none());
+    in_frame(cx, handle, |window, cx| {
+        assert!(!tool_offered(window, "tool-gpu", cx));
     });
 }
 
@@ -411,9 +411,9 @@ fn the_tools_move_between_the_rows_in_the_settings(cx: &mut TestAppContext) {
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, _| {
-        assert!(window.find("tool-monitor").visible());
-        assert!(window.try_find("tool-gpu").is_none(), "off to begin with");
+    in_frame(cx, handle, |window, cx| {
+        assert!(tool_offered(window, "tool-monitor", cx));
+        assert!(!tool_offered(window, "tool-gpu", cx), "off to begin with");
     });
 
     let open = |cx: &mut TestAppContext| {
@@ -479,9 +479,9 @@ fn the_tools_move_between_the_rows_in_the_settings(cx: &mut TestAppContext) {
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, _| {
-        assert!(window.find("tool-gpu").visible());
-        assert!(window.try_find("tool-monitor").is_none());
+    in_frame(cx, handle, |window, cx| {
+        assert!(tool_offered(window, "tool-gpu", cx));
+        assert!(!tool_offered(window, "tool-monitor", cx));
     });
 
     // 恢复默认, for these rows alone.
@@ -523,7 +523,9 @@ fn the_switch_offers_what_the_settings_show(cx: &mut TestAppContext) {
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, cx| window.click("tool-monitor", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-monitor", cx)
+    });
     in_frame(cx, handle, |window, _| {
         assert!(
             window
@@ -536,21 +538,21 @@ fn the_switch_offers_what_the_settings_show(cx: &mut TestAppContext) {
         tools.set(ToolKind::Monitor, false);
         tools.set(ToolKind::Gpu, true);
     });
-    in_frame(cx, handle, |window, _| {
-        assert!(window.try_find("tool-monitor").is_none());
+    in_frame(cx, handle, |window, cx| {
+        assert!(!tool_offered(window, "tool-monitor", cx));
         assert!(
             window
                 .try_find(("tool-sidebar", INITIAL_WEB_TERMINAL))
                 .is_none()
         );
-        assert!(window.find("tool-gpu").visible());
+        assert!(tool_offered(window, "tool-gpu", cx));
     });
 
     set(cx, |tools| tools.reset());
-    in_frame(cx, handle, |window, _| {
-        assert!(window.try_find("tool-gpu").is_none());
+    in_frame(cx, handle, |window, cx| {
+        assert!(!tool_offered(window, "tool-gpu", cx));
         // Back as it was: the monitor, showing.
-        assert_eq!(window.find("tool-monitor").checked(), Some(true));
+        assert_eq!(tool_checked(window, "tool-monitor", cx), Some(true));
         assert_eq!(
             window.find(("tool-sidebar", INITIAL_WEB_TERMINAL)).label(),
             Some("系统监控")

@@ -1,4 +1,4 @@
-//! ShellRS: an SSH host manager with real SSH and local terminals.
+//! Termirs: an SSH host manager with real SSH and local terminals.
 //!
 //! Modules are organized by capability so they can become crates later:
 //! `host` (主机管理), `terminal` (终端), `ssh` (SSH 连接), `sftp` (SFTP
@@ -51,6 +51,6 @@ rust_i18n::i18n!("locales", fallback = "zh-CN");
 pub fn init(cx: &mut gpui_kit::App) {
     // The identity the system shows notifications under, set before any
     // window opens: on Windows the AppUserModelID.
-    cx.set_app_identity(app::app_identity(), "ShellRS");
+    cx.set_app_identity(app::app_identity(), "Termirs");
     app::init(cx);
 }

@@ -1,14 +1,19 @@
 _version: 2
 
-workspace.broadcast.title:
-  zh-CN: 命令广播
-  en: Broadcast input
-workspace.broadcast.active:
-  zh-CN: "广播中 · %{count} 个终端"
-  en: "Broadcasting · %{count} terminals"
-workspace.broadcast.choose:
-  zh-CN: 命令广播 · 勾选至少两个终端
-  en: Broadcast input · Check at least two terminals
+workspace.tabs.title:
+  zh-CN: 标签页
+  en: Tabs
+
+workspace.tabs.local:
+  zh-CN: Local
+  en: Local
+workspace.tabs.ungrouped:
+  zh-CN: 未分组
+  en: Ungrouped
+workspace.tabs.sftp:
+  zh-CN: SFTP
+  en: SFTP
+
 workspace.broadcast.target:
   zh-CN: "将“%{name}”加入命令广播"
   en: "Include “%{name}” in input broadcast"
@@ -50,92 +55,9 @@ workspace.broadcast.refused:
   zh-CN: "没有发送到 %{names}：%{error}"
   en: "Not sent to %{names}: %{error}"
 
-# The title bar.
-workspace.title_bar.hosts:
-  zh-CN: 主机
-  en: Hosts
-workspace.title_bar.forwards:
-  zh-CN: 端口转发
-  en: Port forwarding
-workspace.title_bar.forwards_running:
-  zh-CN: 端口转发，%{count} 条运行中
-  en: Port forwarding, %{count} running
-workspace.title_bar.credentials:
-  zh-CN: 凭据
-  en: Credentials
-workspace.title_bar.hide_sidebar:
-  zh-CN: 隐藏侧栏
-  en: Hide sidebar
-workspace.title_bar.show_sidebar:
-  zh-CN: 显示侧栏
-  en: Show sidebar
-workspace.title_bar.quick_connect:
-  zh-CN: 临时连接…
-  en: Quick connect…
-workspace.title_bar.quick_connect_tooltip:
-  zh-CN: 连接一台主机，不保存
-  en: Connect to a host without saving it
-workspace.title_bar.local_terminal:
-  zh-CN: 本地终端
-  en: Local terminal
-workspace.title_bar.new_local_terminal:
-  zh-CN: 新建本地终端
-  en: New local terminal
-workspace.title_bar.to_light:
-  zh-CN: 切换为浅色
-  en: Switch to light
-workspace.title_bar.to_dark:
-  zh-CN: 切换为深色
-  en: Switch to dark
-
-workspace.sidebar.settings:
-  zh-CN: 设置
-  en: Settings
 workspace.sidebar.open_settings:
   zh-CN: 打开设置
   en: Open settings
-
-# The status bar.
-workspace.status.connected_to:
-  zh-CN: 已连接 %{name}
-  en: Connected to %{name}
-workspace.status.connecting_to:
-  zh-CN: 连接中 %{name}
-  en: Connecting to %{name}
-workspace.status.disconnected_from:
-  zh-CN: 未连接 %{name}
-  en: Not connected to %{name}
-# How the connection stands, then what went wrong.
-workspace.status.problem:
-  zh-CN: "%{state}：%{problem}"
-  en: "%{state}: %{problem}"
-workspace.status.local_file:
-  zh-CN: 本机文件
-  en: Local file
-workspace.status.local_starting:
-  zh-CN: 正在启动 本地终端
-  en: Local terminal starting
-workspace.status.local_running:
-  zh-CN: 运行中 本地终端
-  en: Local terminal running
-workspace.status.local_exited:
-  zh-CN: 已退出 本地终端
-  en: Local terminal exited
-workspace.status.local_failed:
-  zh-CN: 启动失败 本地终端
-  en: Local terminal failed to start
-workspace.status.local_closing:
-  zh-CN: 正在关闭 本地终端
-  en: Local terminal closing
-workspace.status.encoding:
-  zh-CN: 编码 UTF-8
-  en: Encoding UTF-8
-workspace.status.terminal_type:
-  zh-CN: 终端 xterm-256color
-  en: Terminal xterm-256color
-workspace.status.terminal_size:
-  zh-CN: 终端尺寸：%{columns} 列，%{rows} 行
-  en: "Terminal size: %{columns} columns, %{rows} rows"
 
 # 最近连接, the start page.
 workspace.recent.title:
@@ -145,8 +67,8 @@ workspace.recent.hint:
   zh-CN: 双击主机连接，或新建一台主机
   en: Double-click a host to connect, or create a new one
 workspace.recent.find_host:
-  zh-CN: 快速连接
-  en: Find a host
+  zh-CN: 快速打开…
+  en: Quick open…
 workspace.recent.new_host:
   zh-CN: 新建主机…
   en: New host…
@@ -163,6 +85,15 @@ workspace.copied_id:
 workspace.link.open_failed:
   zh-CN: 无法打开链接
   en: Couldn’t open the link
+workspace.launch.open_failed:
+  zh-CN: 无法连接主机
+  en: Couldn’t connect to the host
+workspace.launch.host_not_found:
+  zh-CN: 未找到已保存的主机「%{name}」。请检查主机名或使用主机 ID。
+  en: 'No saved host named “%{name}”. Check the name or use its host ID.'
+workspace.launch.ambiguous_host:
+  zh-CN: 有多台主机名为「%{name}」。请在主机管理中复制目标主机的 ID，再用该 ID 启动。
+  en: 'Several hosts are named “%{name}”. Copy the target host’s ID in Hosts and launch with that ID.'
 
 # Questions while connecting.
 workspace.host_key.unknown_title:
@@ -223,8 +154,8 @@ workspace.files.several:
   zh-CN: “%{first}”等 %{count} 个文件
   en: "%{count} files including “%{first}”"
 workspace.unsaved.quit_title:
-  zh-CN: 退出 ShellRS？
-  en: Quit ShellRS?
+  zh-CN: 退出 Termirs？
+  en: Quit Termirs?
 workspace.unsaved.quit:
   zh-CN: "%{files}有未保存的修改，退出后会丢失。"
   en: Unsaved changes to %{files} will be lost.
@@ -304,14 +235,14 @@ workspace.update.done_title:
   zh-CN: 更新完成
   en: Update complete
 workspace.update.done:
-  zh-CN: ShellRS 已更新到 %{version}。
-  en: ShellRS is now %{version}.
+  zh-CN: Termirs 已更新到 %{version}。
+  en: Termirs is now %{version}.
 workspace.update.failed_title:
   zh-CN: 更新没有完成
   en: Update not completed
 workspace.update.failed:
-  zh-CN: 没有装上 %{to}，ShellRS 仍是 %{from}。可以到官网下载安装。
-  en: "%{to} wasn’t installed, so ShellRS is still %{from}. You can download it from the website."
+  zh-CN: 没有装上 %{to}，Termirs 仍是 %{from}。可以到官网下载安装。
+  en: "%{to} wasn’t installed, so Termirs is still %{from}. You can download it from the website."
 workspace.zmodem.choose_files:
   zh-CN: 上传
   en: Upload

@@ -23,8 +23,7 @@ use crate::host::{ForwardId, ForwardKind, HostStore, matches_forward_query};
 use crate::i18n::{UiLocale, t};
 use crate::shared::{RowTooltip, RowTooltips};
 
-/// The port-forwarding list the left dock shows in place of the hosts:
-/// every rule, whether it is running, and the switch that starts or stops it.
+/// The management window's forwarding rules, their state and start/stop switch.
 ///
 /// The rules live in the shared `HostStore` and what each is doing in the
 /// `ForwardManager`; this panel observes both and owns only its selection
@@ -32,8 +31,8 @@ use crate::shared::{RowTooltip, RowTooltips};
 pub struct ForwardPanel {
     store: Entity<HostStore>,
     manager: Entity<ForwardManager>,
-    /// The workspace's focus handle: actions dispatched on it reach the
-    /// workspace handlers whatever is focused, which after a dialog closes
+    /// The management window's command target, which routes to workspace
+    /// handlers whatever is focused, which after a dialog closes
     /// may be nothing at all.
     target: FocusHandle,
     search: Entity<InputState>,
@@ -108,7 +107,8 @@ impl ForwardPanel {
             selected: None,
             known,
             menu_hit: Rc::new(Cell::new(None)),
-            row_tooltips: RowTooltips::new("forward-tooltip", cx),
+            row_tooltips: RowTooltips::new("forward-tooltip", cx)
+                .with_placement(gpui_kit::base::Placement::Bottom),
             scroll_handle: ScrollHandle::new(),
             focus_handle: cx.focus_handle(),
             _subscriptions: subscriptions,
@@ -144,15 +144,7 @@ impl ForwardPanel {
         self.selected
     }
 
-    /// What the dock's title bar shows while this list is up.
-    pub fn title(&self) -> impl IntoElement + use<> {
-        h_flex()
-            .gap_1()
-            .child(Icon::new(CatalogIcon::ArrowLeftRight).small())
-            .child(t!("forward.panel.title"))
-    }
-
-    /// The dock's toolbar while this list is up.
+    /// The management toolbar while this list is up.
     pub fn toolbar_buttons(&self) -> Vec<Button> {
         let target = self.target.clone();
         vec![
@@ -550,7 +542,6 @@ impl Render for ForwardPanel {
             .on_action(cx.listener(Self::on_select_previous))
             .on_action(cx.listener(Self::on_select_next))
             .size_full()
-            .bg(cx.theme().sidebar)
             .text_color(cx.theme().sidebar_foreground)
             .child(
                 div().p_2().child(

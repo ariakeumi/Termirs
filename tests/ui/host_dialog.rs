@@ -4,11 +4,22 @@
 use crate::support::*;
 use shellrs::host::SerialSettings;
 
+fn open_manager_for_forms(
+    cx: &mut TestAppContext,
+    main: WindowHandle<Root>,
+    workspace: &Entity<Workspace>,
+) -> WindowHandle<Root> {
+    let manager = open_host_manager(cx, main, workspace);
+    cx.simulate_window_resize(manager.into(), size(px(900.), px(800.)));
+    manager
+}
+
 #[gpui_kit::test]
 async fn a_host_without_a_password_says_what_it_tries_and_is_saved_as_such(
     cx: &mut TestAppContext,
 ) {
     let (handle, workspace) = open_workspace_with_store(cx, HostStore::empty());
+    let handle = open_manager_for_forms(cx, handle, &workspace);
     in_frame(cx, handle, |window, cx| window.click("new-host-panel", cx));
     in_frame(cx, handle, |window, cx| {
         // A new host logs in with a password.
@@ -85,6 +96,7 @@ fn chain(window: &mut gpui_kit::Window) -> Option<String> {
 async fn a_host_goes_through_the_jump_hosts_it_lists_in_order(cx: &mut TestAppContext) {
     let (store, [aliyun, zentao, _]) = store_with_jump_hosts();
     let (handle, workspace) = open_workspace_with_store(cx, store);
+    let handle = open_manager_for_forms(cx, handle, &workspace);
     in_frame(cx, handle, |window, cx| window.click("new-host-panel", cx));
     in_frame(cx, handle, |window, cx| {
         // A new host connects directly, with nothing more to fill in.
@@ -158,6 +170,7 @@ async fn a_deleted_jump_host_keeps_its_place_until_it_is_removed(cx: &mut TestAp
     );
     store.remove_unnotified(aliyun);
     let (handle, workspace) = open_workspace_with_store(cx, store);
+    let handle = open_manager_for_forms(cx, handle, &workspace);
     in_frame(cx, handle, |window, cx| {
         window.dispatch_action(Box::new(EditHost(inner)), cx)
     });
@@ -203,7 +216,8 @@ async fn a_deleted_jump_host_keeps_its_place_until_it_is_removed(cx: &mut TestAp
 async fn testing_a_connection_through_a_jump_host_sends_its_login(cx: &mut TestAppContext) {
     let (store, _) = store_with_jump_hosts();
     let tester = Arc::new(FakeConnectionTester::default());
-    let (handle, _) = open_workspace_with_tester(cx, store, tester.clone());
+    let (handle, workspace) = open_workspace_with_tester(cx, store, tester.clone());
+    let handle = open_manager_for_forms(cx, handle, &workspace);
     in_frame(cx, handle, |window, cx| window.click("new-host-panel", cx));
     in_frame(cx, handle, |window, cx| {
         window.click("host-name", cx);
@@ -239,6 +253,7 @@ async fn testing_a_connection_through_a_jump_host_sends_its_login(cx: &mut TestA
 #[gpui_kit::test]
 async fn a_hosts_notes_take_several_lines_and_come_back_when_edited(cx: &mut TestAppContext) {
     let (handle, workspace) = open_workspace_with_store(cx, HostStore::empty());
+    let handle = open_manager_for_forms(cx, handle, &workspace);
     in_frame(cx, handle, |window, cx| window.click("new-host-panel", cx));
     in_frame(cx, handle, |window, cx| {
         window.click("host-name", cx);
@@ -297,6 +312,7 @@ async fn deleting_a_jump_host_leaves_the_connection_behind_it_alone(cx: &mut Tes
         remote.clone(),
         Arc::new(FakeConnectionTester::default()),
     );
+    let handle = open_manager_for_forms(cx, handle, &workspace);
     in_frame(cx, handle, |window, cx| {
         window.dispatch_action(Box::new(ConnectHost(inner)), cx)
     });
@@ -335,6 +351,7 @@ async fn a_host_behind_a_proxy_keeps_the_proxys_password_in_the_keychain(cx: &mu
         HostStore::empty().with_secrets(secrets.clone()),
         tester.clone(),
     );
+    let handle = open_manager_for_forms(cx, handle, &workspace);
     in_frame(cx, handle, |window, cx| window.click("new-host-panel", cx));
     in_frame(cx, handle, |window, cx| {
         window.click("host-name", cx);
@@ -426,15 +443,13 @@ async fn an_edit_leaves_open_tabs_as_they_took_the_host(cx: &mut TestAppContext)
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        window
-            .within("host-tree")
-            .double_click(("host-row", id.0), cx);
+        window.dispatch_action(Box::new(ConnectHost(id)), cx);
     })
     .unwrap();
     cx.wait_for(handle.into(), Duration::from_secs(2), |window, cx| {
         window.render_frame(cx);
         factory.starts() == 1
-            && window.find("status-connection").label() == Some("已连接 prompt-host")
+            && active_connection_state(&workspace, cx) == Some(ConnectionState::Connected)
     })
     .await;
 
@@ -449,26 +464,21 @@ async fn an_edit_leaves_open_tabs_as_they_took_the_host(cx: &mut TestAppContext)
     });
     cx.run_until_parked();
     // The tab keeps its name and connection; the host list has the new.
-    in_frame(cx, handle, |window, _| {
+    in_frame(cx, handle, |window, cx| {
         assert_eq!(factory.starts(), 1, "still the old connection");
         assert_eq!(
-            window.find("status-connection").label(),
-            Some("已连接 prompt-host")
+            active_connection_state(&workspace, cx),
+            Some(ConnectionState::Connected)
         );
         assert_eq!(
             window.find(("terminal-tab", 1_u64)).label(),
             Some("prompt-host")
         );
-        assert!(
-            window
-                .within("host-tree")
-                .try_find(("host-row", id.0))
-                .is_some()
-        );
+        assert!(window.try_find("host-tree").is_none());
     });
 
     in_frame(cx, handle, |window, cx| {
-        window.click(("reconnect", 1_u64), cx)
+        window.dispatch_action(Box::new(ReconnectTerminal(RemoteTerminalId(1_u64))), cx)
     });
     cx.wait_for(handle.into(), Duration::from_secs(2), |_, _| {
         factory.starts() == 2
@@ -497,6 +507,7 @@ async fn an_edit_changes_the_protocol_unless_something_holds_it(cx: &mut TestApp
             .with_route(Route::Jump(vec![Some(jump)])),
     );
     let (handle, workspace) = open_workspace_with_store(cx, store);
+    let handle = open_manager_for_forms(cx, handle, &workspace);
 
     // Another host goes through the jump host: it stays SSH.
     in_frame(cx, handle, |window, cx| {
@@ -558,6 +569,7 @@ async fn a_host_made_ssh_starts_with_a_new_hosts_login(cx: &mut TestAppContext) 
         HostDraft::telnet("switch", "10.0.0.5", 23, None).with_credential(credential),
     );
     let (handle, workspace) = open_workspace_with_store(cx, store);
+    let handle = open_manager_for_forms(cx, handle, &workspace);
 
     for id in [serial, telnet] {
         in_frame(cx, handle, |window, cx| {
@@ -595,7 +607,8 @@ async fn a_host_made_ssh_starts_with_a_new_hosts_login(cx: &mut TestAppContext) 
 /// backdrop.
 #[gpui_kit::test]
 async fn a_form_error_sits_above_the_dialog_and_a_click_puts_it_away(cx: &mut TestAppContext) {
-    let (handle, _) = open_workspace(cx);
+    let (handle, workspace) = open_workspace(cx);
+    let handle = open_manager_for_forms(cx, handle, &workspace);
     in_frame(cx, handle, |window, cx| window.click("new-host-panel", cx));
     in_frame(cx, handle, |window, cx| {
         window.click("host-name", cx);
@@ -621,6 +634,7 @@ async fn a_form_error_sits_above_the_dialog_and_a_click_puts_it_away(cx: &mut Te
 #[gpui_kit::test]
 async fn a_host_without_an_address_is_not_saved(cx: &mut TestAppContext) {
     let (handle, workspace) = open_workspace_with_store(cx, HostStore::empty());
+    let handle = open_manager_for_forms(cx, handle, &workspace);
     for (name, address) in [("", ""), ("", "   "), ("web-01", "")] {
         in_frame(cx, handle, |window, cx| window.click("new-host-panel", cx));
         in_frame(cx, handle, |window, cx| {
@@ -646,6 +660,7 @@ async fn a_blank_host_name_uses_the_address_and_is_saved(cx: &mut TestAppContext
     let path = directory.path().join("shellrs.db");
     let store = HostStore::load(HostDatabase::open(&path).unwrap()).unwrap();
     let (handle, workspace) = open_workspace_with_store(cx, store);
+    let handle = open_manager_for_forms(cx, handle, &workspace);
     for (name, address) in [("", "example.com"), ("   ", "10.0.0.2")] {
         in_frame(cx, handle, |window, cx| {
             // Saving closes the dialog and leaves focus outside the host panel.
@@ -680,6 +695,7 @@ async fn a_blank_host_name_uses_the_address_and_is_saved(cx: &mut TestAppContext
 #[gpui_kit::test]
 async fn new_host_dialog_validates_then_inserts(cx: &mut TestAppContext) {
     let (handle, workspace) = open_workspace(cx);
+    let handle = open_manager_for_forms(cx, handle, &workspace);
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
@@ -776,6 +792,7 @@ async fn testing_a_connection_logs_in_with_what_the_form_shows(cx: &mut TestAppC
     secrets.set(&endpoint, "hunter2").unwrap();
     let tester = Arc::new(FakeConnectionTester::failing("用户名或密码错误"));
     let (handle, workspace) = open_workspace_with_tester(cx, store, tester.clone());
+    let handle = open_manager_for_forms(cx, handle, &workspace);
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
@@ -834,7 +851,8 @@ async fn testing_a_connection_logs_in_with_what_the_form_shows(cx: &mut TestAppC
 #[gpui_kit::test]
 async fn a_connection_test_needs_a_host_and_a_user_first(cx: &mut TestAppContext) {
     let tester = Arc::new(FakeConnectionTester::default());
-    let (handle, _) = open_workspace_with_tester(cx, HostStore::empty(), tester.clone());
+    let (handle, workspace) = open_workspace_with_tester(cx, HostStore::empty(), tester.clone());
+    let handle = open_manager_for_forms(cx, handle, &workspace);
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
@@ -883,7 +901,8 @@ async fn a_connection_test_needs_a_host_and_a_user_first(cx: &mut TestAppContext
 async fn a_first_seen_host_key_is_put_to_the_user_above_the_host_dialog(cx: &mut TestAppContext) {
     let tester = Arc::new(FakeConnectionTester::asking_trust());
     let (store, id) = one_host_store(AuthKind::Password);
-    let (handle, _) = open_workspace_with_tester(cx, store, tester.clone());
+    let (handle, workspace) = open_workspace_with_tester(cx, store, tester.clone());
+    let handle = open_manager_for_forms(cx, handle, &workspace);
 
     // Trust: the question reaches the tester as a yes.
     cx.update_window(handle.into(), |_, window, cx| {
@@ -965,6 +984,7 @@ async fn a_new_host_saves_its_password_to_the_keychain(cx: &mut TestAppContext) 
     let secrets = Arc::new(InMemorySecretStore::default());
     let (handle, workspace) =
         open_workspace_with_store(cx, HostStore::empty().with_secrets(secrets.clone()));
+    let handle = open_manager_for_forms(cx, handle, &workspace);
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
@@ -1018,7 +1038,8 @@ async fn editing_the_host_moves_the_saved_password_with_it(cx: &mut TestAppConte
     let secrets = Arc::new(InMemorySecretStore::default());
     let (store, id, endpoint) = store_with_secrets(secrets.clone());
     secrets.set(&endpoint, "hunter2").unwrap();
-    let (handle, _) = open_workspace_with_store(cx, store);
+    let (handle, workspace) = open_workspace_with_store(cx, store);
+    let handle = open_manager_for_forms(cx, handle, &workspace);
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
@@ -1068,7 +1089,8 @@ async fn clearing_the_password_field_forgets_the_saved_password(cx: &mut TestApp
     let secrets = Arc::new(InMemorySecretStore::default());
     let (store, id, endpoint) = store_with_secrets(secrets.clone());
     secrets.set(&endpoint, "hunter2").unwrap();
-    let (handle, _) = open_workspace_with_store(cx, store);
+    let (handle, workspace) = open_workspace_with_store(cx, store);
+    let handle = open_manager_for_forms(cx, handle, &workspace);
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
@@ -1107,7 +1129,8 @@ async fn deleting_the_last_host_on_an_endpoint_forgets_its_password(cx: &mut Tes
     let secrets = Arc::new(InMemorySecretStore::default());
     let (store, id, endpoint) = store_with_secrets(secrets.clone());
     secrets.set(&endpoint, "hunter2").unwrap();
-    let (handle, _) = open_workspace_with_store(cx, store);
+    let (handle, workspace) = open_workspace_with_store(cx, store);
+    let handle = open_manager_for_forms(cx, handle, &workspace);
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
@@ -1136,12 +1159,13 @@ async fn deleting_the_last_host_on_an_endpoint_forgets_its_password(cx: &mut Tes
 
 #[gpui_kit::test]
 async fn a_dialogs_choices_are_equal_segments_of_one_track(cx: &mut TestAppContext) {
-    let (handle, _) = open_workspace_with_credentials(
+    let (handle, workspace) = open_workspace_with_credentials(
         cx,
         HostStore::seed(),
         Arc::new(RecordingRemoteProvider::default()),
         Arc::new(FakeConnectionTester::default()),
     );
+    let handle = open_manager_for_forms(cx, handle, &workspace);
     in_frame(cx, handle, |window, cx| window.click("new-host-panel", cx));
     in_frame(cx, handle, |window, cx| {
         let name = window.find("host-name").bounds();

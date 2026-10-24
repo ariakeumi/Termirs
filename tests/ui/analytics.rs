@@ -90,7 +90,9 @@ async fn the_features_used_are_counted(cx: &mut TestAppContext) {
     assert_eq!(counted(&received), [Counter::Ssh, Counter::SshNoPassword]);
 
     // With it in front: a tool of the right sidebar, and the find bar.
-    in_frame(cx, handle, |window, cx| window.click("tool-history", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-history", cx)
+    });
     in_frame(cx, handle, |window, cx| {
         window.dispatch_action(Box::new(FindInTerminal), cx)
     });

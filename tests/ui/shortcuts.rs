@@ -60,6 +60,238 @@ fn overrides(workspace: &Entity<Workspace>, cx: &mut TestAppContext) -> serde_js
 }
 
 #[gpui_kit::test]
+async fn quick_open_searches_from_a_terminal_and_connects_the_keyboard_selection(
+    cx: &mut TestAppContext,
+) {
+    let (handle, workspace) = open_workspace(cx);
+    in_frame(cx, handle, |window, cx| {
+        window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx);
+    });
+    in_frame(cx, handle, |window, cx| {
+        window.press(default_keys("quick-open"), cx);
+    });
+    in_frame(cx, handle, |window, cx| {
+        assert!(window.find("quick-connect").visible());
+        // Typing immediately proves that opening the palette focuses its search.
+        window.input("web-", cx);
+    });
+    cx.wait_for(handle.into(), Duration::from_secs(2), |window, cx| {
+        window.render_frame(cx);
+        window
+            .try_find(("quick-connect-host", STAGING_API))
+            .is_none()
+    })
+    .await;
+    in_frame(cx, handle, |window, cx| {
+        assert!(window.find(("quick-connect-host", WEB_01)).visible());
+        assert!(window.find(("quick-connect-host", WEB_02)).visible());
+        window.press("down", cx);
+        window.press("enter", cx);
+    });
+    cx.wait_for(handle.into(), Duration::from_secs(2), |_, cx| {
+        let workspace = workspace.read(cx);
+        let Some(CenterTab::Terminal(id)) = workspace.active_tab() else {
+            return false;
+        };
+        workspace.remote_terminal(id).unwrap().read(cx).host_id() == HostId(WEB_02)
+    })
+    .await;
+    in_frame(cx, handle, |window, _| {
+        assert!(window.try_find("quick-connect").is_none());
+    });
+}
+
+#[gpui_kit::test]
+fn quick_open_shortcut_can_be_changed_in_settings(cx: &mut TestAppContext) {
+    let (handle, workspace) = open_workspace(cx);
+    open_shortcuts(cx, handle);
+    in_frame(cx, handle, |window, cx| {
+        window.click("shortcut-keys-quick-open", cx);
+    });
+    in_frame(cx, handle, |window, cx| {
+        window.press(&primary("j"), cx);
+    });
+    assert_eq!(
+        overrides(&workspace, cx),
+        serde_json::json!({ "quick-open": Keystroke::parse(&primary("j")).unwrap().unparse() })
+    );
+    in_frame(cx, handle, |window, cx| {
+        window.press(default_keys("quick-open"), cx);
+    });
+    in_frame(cx, handle, |window, cx| {
+        assert!(window.try_find("quick-connect").is_none());
+        window.press(&primary("j"), cx);
+    });
+    in_frame(cx, handle, |window, cx| {
+        assert!(window.find("quick-connect").visible());
+        window.press("escape", cx);
+    });
+    in_frame(cx, handle, |window, _| {
+        assert!(window.try_find("quick-connect").is_none());
+        assert!(window.find("settings").visible());
+    });
+    // Escape restores the previous focus so the shortcut works again.
+    in_frame(cx, handle, |window, cx| window.press(&primary("j"), cx));
+    in_frame(cx, handle, |window, _| {
+        assert!(window.find("quick-connect").visible());
+    });
+    in_frame(cx, handle, |window, cx| window.press("escape", cx));
+}
+
+#[gpui_kit::test]
+async fn quick_open_handles_no_matches_and_can_search_again(cx: &mut TestAppContext) {
+    let (handle, workspace) = open_workspace(cx);
+    in_frame(cx, handle, |window, cx| {
+        window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx);
+    });
+    let before = active_tab(&workspace, cx);
+    in_frame(cx, handle, |window, cx| {
+        window.press(default_keys("quick-open"), cx);
+    });
+    in_frame(cx, handle, |window, cx| {
+        window.input("no-such-ssh-host", cx);
+    });
+    cx.wait_for(handle.into(), Duration::from_secs(2), |window, cx| {
+        window.render_frame(cx);
+        window.try_find("quick-connect-empty").is_some()
+    })
+    .await;
+    in_frame(cx, handle, |window, cx| {
+        assert_eq!(
+            window.find("quick-connect-empty").label(),
+            Some("没有匹配的主机")
+        );
+        window.press("enter", cx);
+    });
+    assert_eq!(active_tab(&workspace, cx), before);
+    in_frame(cx, handle, |window, cx| {
+        assert!(window.find("quick-connect").visible());
+        window.press(&primary("a"), cx);
+        window.input("web-02", cx);
+    });
+    cx.wait_for(handle.into(), Duration::from_secs(2), |window, cx| {
+        window.render_frame(cx);
+        window.try_find(("quick-connect-host", WEB_02)).is_some()
+    })
+    .await;
+    in_frame(cx, handle, |window, cx| window.press("enter", cx));
+    cx.wait_for(handle.into(), Duration::from_secs(2), |window, cx| {
+        window.render_frame(cx);
+        window.try_find("quick-connect").is_none()
+    })
+    .await;
+    cx.update(|cx| {
+        let workspace = workspace.read(cx);
+        let Some(CenterTab::Terminal(id)) = workspace.active_tab() else {
+            panic!("confirming a match must activate its terminal");
+        };
+        assert_eq!(
+            workspace.remote_terminal(id).unwrap().read(cx).host_id(),
+            HostId(WEB_02)
+        );
+    });
+}
+
+#[gpui_kit::test]
+fn quick_open_explains_when_no_saved_ssh_hosts_exist(cx: &mut TestAppContext) {
+    let mut store = HostStore::empty();
+    store.insert_unnotified(HostDraft::telnet("router", "10.0.0.1", 23, None));
+    let (handle, _) = open_workspace_with_store(cx, store);
+    in_frame(cx, handle, |window, cx| {
+        window.press(default_keys("quick-open"), cx);
+    });
+    in_frame(cx, handle, |window, cx| {
+        assert_eq!(
+            window.find("quick-connect-empty").label(),
+            Some("还没有保存的 SSH 主机")
+        );
+        window.press("enter", cx);
+    });
+    in_frame(cx, handle, |window, cx| {
+        assert!(window.find("recent-hosts").visible());
+        assert!(window.find("quick-connect").visible());
+        window.press("escape", cx);
+    });
+}
+
+#[gpui_kit::test]
+fn local_terminal_and_dual_pane_sftp_open_from_their_shortcuts(cx: &mut TestAppContext) {
+    let (handle, workspace) = open_workspace(cx);
+    in_frame(cx, handle, |window, cx| {
+        window.press(default_keys("new-local-terminal"), cx);
+    });
+    assert!(matches!(
+        active_tab(&workspace, cx),
+        Some(CenterTab::LocalTerminal(_))
+    ));
+    let local = active_tab(&workspace, cx);
+    in_frame(cx, handle, |window, cx| {
+        window.press(default_keys("open-sftp"), cx);
+    });
+    assert_eq!(active_tab(&workspace, cx), local);
+
+    in_frame(cx, handle, |window, cx| {
+        window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx);
+    });
+    for _ in 0..2 {
+        let previous = active_tab(&workspace, cx);
+        in_frame(cx, handle, |window, cx| {
+            window.press(default_keys("open-sftp"), cx);
+        });
+        let current = active_tab(&workspace, cx);
+        assert_ne!(current, previous);
+        let Some(CenterTab::Explorer(id)) = current else {
+            panic!("SFTP shortcut must activate a new explorer");
+        };
+        cx.update(|cx| {
+            let panel = workspace.read(cx).explorer(id).unwrap().read(cx);
+            assert_eq!(panel.host_id(), HostId(WEB_01));
+            assert!(!panel.is_sidebar());
+        });
+        in_frame(cx, handle, |window, _| {
+            assert!(window.find(("local-pane", id.0)).visible());
+            assert!(window.find(("remote-pane", id.0)).visible());
+        });
+    }
+}
+
+#[gpui_kit::test]
+fn control_tab_cycles_tabs_from_the_content_and_sidebar(cx: &mut TestAppContext) {
+    let (handle, workspace) = open_workspace(cx);
+    in_frame(cx, handle, |window, cx| {
+        window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx);
+        window.press("ctrl-tab", cx);
+    });
+    assert_eq!(
+        active_tab(&workspace, cx),
+        terminal(INITIAL_STAGING_TERMINAL)
+    );
+    in_frame(cx, handle, |window, cx| window.press("ctrl-tab", cx));
+    assert_eq!(active_tab(&workspace, cx), terminal(INITIAL_WEB_TERMINAL));
+    in_frame(cx, handle, |window, cx| window.press("ctrl-shift-tab", cx));
+    assert_eq!(
+        active_tab(&workspace, cx),
+        terminal(INITIAL_STAGING_TERMINAL)
+    );
+
+    in_frame(cx, handle, |window, cx| {
+        window.dispatch_action(Box::new(shellrs::app::ShowTabs), cx);
+    });
+    in_frame(cx, handle, |window, cx| {
+        assert_eq!(window.find("open-tabs").focused(), Some(true));
+        window.press("ctrl-tab", cx);
+    });
+    assert_eq!(active_tab(&workspace, cx), terminal(INITIAL_WEB_TERMINAL));
+
+    in_frame(cx, handle, |window, cx| window.click("open-settings", cx));
+    assert_eq!(active_tab(&workspace, cx), Some(CenterTab::Settings));
+    in_frame(cx, handle, |window, cx| window.press("ctrl-tab", cx));
+    assert_eq!(active_tab(&workspace, cx), terminal(INITIAL_WEB_TERMINAL));
+    in_frame(cx, handle, |window, cx| window.press("ctrl-shift-tab", cx));
+    assert_eq!(active_tab(&workspace, cx), Some(CenterTab::Settings));
+}
+
+#[gpui_kit::test]
 fn tabs_are_switched_from_the_keyboard(cx: &mut TestAppContext) {
     let (handle, workspace) = open_workspace(cx);
     in_frame(cx, handle, |window, cx| {

@@ -13,7 +13,7 @@ use gpui_kit::component::{
     ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _,
     button::{Button, ButtonVariants as _},
     h_flex,
-    input::{Input, InputEvent, InputState},
+    input::{self, Input, InputEvent, InputState},
     menu::PopupMenu,
     scroll::Scrollbar,
     tooltip::Tooltip,
@@ -1233,6 +1233,17 @@ impl Render for TerminalView {
             .font_family(font.family(cx))
             .text_size(font.size)
             .aria_label((self.label)(cx))
+            // The native Edit menu uses the same actions as text fields.
+            // Only a focused terminal translates them to terminal commands.
+            .on_action(|_: &input::Copy, window, cx| {
+                window.dispatch_action(Box::new(CopyTerminal), cx);
+            })
+            .on_action(|_: &input::Paste, window, cx| {
+                window.dispatch_action(Box::new(PasteTerminal), cx);
+            })
+            .on_action(|_: &input::SelectAll, window, cx| {
+                window.dispatch_action(Box::new(SelectAllTerminal), cx);
+            })
             .on_action(cx.listener(|this, _: &SendTab, _, cx| {
                 this.send_user_input(vec![b'\t'], cx);
             }))
@@ -1280,7 +1291,7 @@ impl Render for TerminalView {
         div()
             .relative()
             .size_full()
-            .p_2()
+            .p_3()
             // The margin and the part of a cell the grid does not fill are
             // the terminal's too.
             .bg(TerminalColors::current(cx).background())

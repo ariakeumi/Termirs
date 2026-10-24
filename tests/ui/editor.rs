@@ -96,7 +96,7 @@ async fn double_clicking_a_remote_file_opens_it_once(cx: &mut TestAppContext) {
     wait_for_editor(cx, handle, FIRST).await;
 
     assert_eq!(text_of(&workspace, FIRST, cx), "hello world\n");
-    in_frame(cx, handle, |window, _| {
+    in_frame(cx, handle, |window, cx| {
         assert_eq!(
             window.find(("editor-tab", FIRST.0)).label(),
             Some("文件 甲.txt")
@@ -105,17 +105,11 @@ async fn double_clicking_a_remote_file_opens_it_once(cx: &mut TestAppContext) {
             window.find(("editor-path", FIRST.0)).label(),
             Some("db-01:/home/tester/文件 甲.txt")
         );
+        assert!(window.try_find("status-editor-cursor").is_none());
+        assert!(window.try_find("status-editor-format").is_none());
         assert_eq!(
-            window.find("status-editor-cursor").label(),
-            Some("行 1，列 1")
-        );
-        assert_eq!(
-            window.find("status-editor-format").label(),
-            Some("UTF-8 · LF")
-        );
-        assert_eq!(
-            window.find("status-connection").label(),
-            Some("已连接 db-01")
+            active_connection_state(&workspace, cx),
+            Some(ConnectionState::Connected)
         );
         // Nothing changed yet: no mark, nothing to save.
         assert!(
@@ -198,10 +192,7 @@ async fn saving_writes_the_file_back_and_clears_the_mark(cx: &mut TestAppContext
             window.find(("editor-state", FIRST.0)).label(),
             Some("已修改")
         );
-        assert_eq!(
-            window.find("status-editor-cursor").label(),
-            Some("行 1，列 3")
-        );
+        assert!(window.try_find("status-editor-cursor").is_none());
     });
 
     in_frame(cx, handle, |window, cx| window.press("secondary-s", cx));
@@ -242,10 +233,7 @@ async fn crlf_and_a_byte_order_mark_are_written_back_as_they_were(cx: &mut TestA
     wait_for_editor(cx, handle, FIRST).await;
     assert_eq!(text_of(&workspace, FIRST, cx), "a=1\nb=2\n");
     in_frame(cx, handle, |window, _| {
-        assert_eq!(
-            window.find("status-editor-format").label(),
-            Some("UTF-8 BOM · CRLF")
-        );
+        assert!(window.try_find("status-editor-format").is_none());
     });
 
     type_text(cx, handle, "c=3\n");
@@ -387,7 +375,7 @@ async fn a_local_file_is_edited_on_this_machine(cx: &mut TestAppContext) {
             window.find(("editor-path", FIRST.0)).label(),
             Some(LOCAL_FILE)
         );
-        assert_eq!(window.find("status-connection").label(), Some("本机文件"));
+        assert!(window.try_find("status-connection").is_none());
     });
 
     type_text(cx, handle, "edited ");
@@ -442,10 +430,7 @@ async fn saving_while_disconnected_offers_to_reconnect(cx: &mut TestAppContext) 
         .unwrap();
     cx.wait_for(handle.into(), Duration::from_secs(2), |window, cx| {
         window.render_frame(cx);
-        window
-            .find("status-connection")
-            .label()
-            .is_some_and(|text| text.starts_with("未连接"))
+        active_connection_state(&workspace, cx) == Some(ConnectionState::Disconnected)
     })
     .await;
 

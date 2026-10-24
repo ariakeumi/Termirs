@@ -20,6 +20,7 @@ pub fn open_workspace_with_credentials(
             Workspace::new_with_services(
                 store,
                 cx.new(|_| settings_store()),
+                None,
                 remote,
                 fake_telnet_terminals(),
                 fake_serial_terminals(),
@@ -40,14 +41,19 @@ pub fn open_workspace_with_credentials(
 }
 
 /// Show the credential list and wait for it to be up.
-pub async fn show_credentials(cx: &mut TestAppContext, handle: WindowHandle<Root>) {
+pub async fn show_credentials(
+    cx: &mut TestAppContext,
+    handle: WindowHandle<Root>,
+) -> WindowHandle<Root> {
     in_frame(cx, handle, |window, cx| {
-        window.click("show-credentials", cx)
+        window.dispatch_action(Box::new(shellrs::app::ShowCredentials), cx)
     });
+    let handle = management_window(cx, handle);
     cx.wait_for(handle.into(), Duration::from_secs(2), |window, _| {
         window.try_find("credential-search").is_some()
     })
     .await;
+    handle
 }
 
 /// Wait for the open dialog to close.

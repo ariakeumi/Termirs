@@ -11,7 +11,7 @@ use std::{
 use gpui_kit::SharedString;
 use unicode_width::UnicodeWidthStr as _;
 
-use super::link::OpenLink;
+use super::link::OpenTarget;
 use super::protocol::{
     AuthChoice, CredentialDeleted, CredentialDetails, CredentialKindChoice, Envelope, ErrorCode,
     FlowControlChoice, FrameKind, HostDeleted, HostDetails, HostInfo, PROTOCOL_VERSION,
@@ -134,7 +134,7 @@ const ACTIVATION_TIMEOUT: Duration = Duration::from_secs(2);
 /// Whatever takes the connection counts as running, whether or not it
 /// understands the request: an older ShellRS answers with an error, and a
 /// second copy on the same data would be worse than a window left behind.
-pub fn activate_running_app(endpoint: &Path, open: Option<OpenLink>) -> bool {
+pub fn activate_running_app(endpoint: &Path, open: Option<OpenTarget>) -> bool {
     let Ok(stream) = connect(endpoint) else {
         return false;
     };
@@ -154,7 +154,7 @@ pub fn activate_running_app(endpoint: &Path, open: Option<OpenLink>) -> bool {
 
 /// Send the request and wait for the answer, whatever it says: by then the
 /// app has the request.
-fn ask_to_come_forward<S>(stream: S, open: Option<OpenLink>) -> io::Result<()>
+fn ask_to_come_forward<S>(stream: S, open: Option<OpenTarget>) -> io::Result<()>
 where
     S: Copy + io::Read + Write,
 {

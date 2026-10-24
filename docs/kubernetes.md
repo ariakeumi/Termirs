@@ -2,7 +2,7 @@
 
 [返回使用手册](manual.zh.md#kubernetes)
 
-Kubernetes 是远程终端右侧栏的一个工具。集群来自 **SSH 主机**上的 kubeconfig，不是运行 ShellRS 的电脑。连接到能访问集群的管理主机后，在右侧选择 Kubernetes。
+Kubernetes 是远程终端右侧栏的一个工具。集群来自 **SSH 主机**上的 kubeconfig，不是运行 Termirs 的电脑。连接到能访问集群的管理主机后，在右侧选择 Kubernetes。
 
 可在「设置 → 终端 → 侧栏功能」开启或关闭 Kubernetes，默认关闭（不是每台主机都有 kubectl），选择会跨启动保存。关闭立即隐藏入口、释放面板并停止列表、日志和性能刷新；再次开启后，从终端右侧重新打开即可使用。
 

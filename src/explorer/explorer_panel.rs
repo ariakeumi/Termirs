@@ -9,8 +9,8 @@ use super::{
 use crate::app::ExplorerDispatch as _;
 use crate::{
     app::{
-        CatalogIcon, CenterTab, CloseExplorer, CopyHostAddress, ExplorerAction, ExplorerCommand,
-        OpenExplorer, RenameExplorer,
+        CatalogIcon, CenterTab, CopyHostAddress, ExplorerAction, ExplorerCommand, OpenExplorer,
+        RenameExplorer,
     },
     connection::{ConnectionPrompt, ConnectionPromptReply, Latency},
     host::{BookmarkSide, ConnectionState, Host, HostId, HostLogin, HostStore},
@@ -20,10 +20,10 @@ use crate::{
         SharedLocalDirectoryProvider, SharedSftpTransportProvider, TextFile, TransferDirection,
         TransferPhase, TransferQuestion, UploadRequest,
     },
-    shared::{ClosableTabTitle, HostMark, LatencyLabel, RenamableTab, close_tab_items},
+    shared::{ClosableTabTitle, LatencyLabel, RenamableTab, close_tab_items},
 };
 use gpui_kit::component::{
-    Disableable as _, Icon, IconName, Sizable as _, WindowExt as _,
+    Disableable as _, Icon, IconName, WindowExt as _,
     button::Button,
     dialog::DialogButtonProps,
     dock::{BasePanel, Panel, PanelEvent, TabGroup},
@@ -345,8 +345,7 @@ impl ExplorerPanel {
             self.navigate(true, path, LoadIntent::Visit, window, cx);
         }
     }
-    /// What the window's status line shows for this tab: its own connection,
-    /// and what went wrong, remote side first.
+    /// This tab's connection and directory problem, remote side first.
     pub fn status(&self, cx: &App) -> ExplorerStatus {
         let problem = [&self.remote, &self.local]
             .into_iter()
@@ -1018,21 +1017,11 @@ impl BasePanel for ExplorerPanel {
 }
 impl Panel for ExplorerPanel {
     fn title(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let (name, address, os) = (
-            self.host.name.clone(),
-            self.host.address.clone(),
-            self.host.os,
-        );
         let id = self.id;
         let menu = self.tab_menu(cx);
         let state = self.connection_state();
-        // The host's mark, as on the host's terminal tabs.
-        let mark = HostMark::new(("explorer-tab-os", id.0), name, address, os)
+        ClosableTabTitle::text(("explorer-tab", id.0), self.tab_title(cx))
             .connection_state(state)
-            .small();
-        ClosableTabTitle::new(("explorer-tab", id.0), mark, self.tab_title(cx))
-            .connection_state(state)
-            .closable(("close-explorer", id.0), Box::new(CloseExplorer(id)))
             .context_menu(move |popup, _, cx| menu.build(popup, cx))
     }
     fn dropdown_menu(
@@ -1146,7 +1135,7 @@ impl ExplorerSender {
     }
 }
 
-/// The status of an SFTP tab for the window's status line.
+/// Connection and directory status of an SFTP tab.
 pub struct ExplorerStatus {
     pub state: ConnectionState,
     /// What went wrong reading a directory, or why the connection dropped.

@@ -25,7 +25,7 @@ fn theme_toggle_flips_mode(cx: &mut TestAppContext) {
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        window.click("theme-toggle", cx);
+        window.dispatch_action(Box::new(shellrs::app::ToggleTheme), cx);
     })
     .unwrap();
     cx.run_until_parked();
@@ -40,7 +40,7 @@ fn theme_toggle_flips_mode(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn settings_open_from_the_host_list_as_one_tab(cx: &mut TestAppContext) {
+fn settings_open_from_the_title_bar_as_one_tab(cx: &mut TestAppContext) {
     let (handle, workspace) = open_workspace(cx);
 
     cx.update_window(handle.into(), |_, window, cx| {
@@ -313,7 +313,7 @@ fn the_appearance_setting_drives_the_theme_and_the_title_bar_switch(cx: &mut Tes
         window.render_frame(cx);
         assert_eq!(appearance_dropdown(window, 1).as_deref(), Some("深色"));
         // The title bar's switch picks the other appearance outright.
-        window.click("theme-toggle", cx);
+        window.dispatch_action(Box::new(shellrs::app::ToggleTheme), cx);
     })
     .unwrap();
     cx.run_until_parked();
@@ -384,7 +384,7 @@ fn terminal_themes_follow_the_appearance_and_a_card_chooses_one(cx: &mut TestApp
     let neutral = |cx: &mut TestAppContext| {
         cx.update(|cx| {
             let name = cx.theme().theme_name().clone();
-            name == "Default Light" || name == "ShellRS Dark"
+            name == "Default Light" || name == "Termirs Dark"
         })
     };
     assert!(neutral(cx));
@@ -508,6 +508,22 @@ fn the_interface_font_size_is_set_on_the_appearance_page(cx: &mut TestAppContext
     cx.run_until_parked();
     in_frame(cx, handle, |window, _| {
         assert_eq!(appearance_dropdown(window, 2).as_deref(), Some("14"))
+    });
+    cx.update(|cx| assert_eq!(cx.theme().font_size.as_f32(), 14.));
+    in_frame(cx, handle, |window, _| {
+        assert_eq!(
+            appearance_dropdown(window, 3).as_deref(),
+            Some("16（默认）")
+        );
+    });
+    cx.update(|cx| {
+        settings.update(cx, |settings, cx| {
+            settings.update(|settings| settings.interface.sidebar_font_size = 18., cx)
+        });
+    });
+    cx.run_until_parked();
+    in_frame(cx, handle, |window, _| {
+        assert_eq!(appearance_dropdown(window, 3).as_deref(), Some("18"));
     });
     cx.update(|cx| assert_eq!(cx.theme().font_size.as_f32(), 14.));
 }
@@ -744,10 +760,9 @@ fn the_interface_language_changes_the_window_at_once(cx: &mut TestAppContext) {
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
         assert_eq!(window.find("settings-tab").label(), Some("设置"));
-        assert_eq!(window.find("show-hosts").label(), Some("主机"));
+        assert_eq!(window.find("open-settings").label(), Some("打开设置"));
         assert_eq!(appearance_dropdown(window, 1).as_deref(), Some("跟随系统"));
-        // Set once when the list was made, and kept by the input.
-        assert_eq!(window.find("host-search").label(), Some("搜索主机或分组"));
+        assert!(window.try_find("host-search").is_none());
     })
     .unwrap();
 
@@ -763,13 +778,10 @@ fn the_interface_language_changes_the_window_at_once(cx: &mut TestAppContext) {
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
         assert_eq!(window.find("settings-tab").label(), Some("Settings"));
-        assert_eq!(window.find("show-hosts").label(), Some("Hosts"));
+        assert_eq!(window.find("open-settings").label(), Some("Open settings"));
         assert_eq!(appearance_dropdown(window, 0).as_deref(), Some("English"));
         assert_eq!(appearance_dropdown(window, 1).as_deref(), Some("System"));
-        assert_eq!(
-            window.find("host-search").label(),
-            Some("Search hosts or groups")
-        );
+        assert!(window.try_find("host-search").is_none());
     })
     .unwrap();
 

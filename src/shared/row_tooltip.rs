@@ -1,4 +1,4 @@
-//! The tooltips of the rows in the sidebar's lists: hosts, port forwards
+//! The tooltips of the management lists: hosts, port forwards
 //! and credentials.
 
 use std::{cell::Cell, rc::Rc, time::Duration};
@@ -39,7 +39,7 @@ impl RowTooltip {
 
 /// One list's row tooltips, keyed by what each row shows.
 ///
-/// A tooltip opens beside its row, on the right, rather than under the
+/// By default, a tooltip opens beside its row on the right rather than under the
 /// pointer as GPUI's own `.tooltip()` does: the pointer goes on down the
 /// list, and the rows below stay in sight. Moving from row to row it follows
 /// the pointer without waiting again. It is drawn in the theme's inverse,
@@ -57,6 +57,7 @@ pub struct RowTooltips<K> {
     /// this one lets go of it, and this row's hide would cancel the tooltip
     /// the next row just asked for.
     owner: Rc<Cell<Option<K>>>,
+    placement: Placement,
 }
 
 impl<K> Clone for RowTooltips<K> {
@@ -65,6 +66,7 @@ impl<K> Clone for RowTooltips<K> {
             id: self.id,
             overlay: self.overlay.clone(),
             owner: self.owner.clone(),
+            placement: self.placement,
         }
     }
 }
@@ -76,7 +78,14 @@ impl<K: Copy + PartialEq + 'static> RowTooltips<K> {
             id,
             overlay: cx.new(|_| TooltipOverlay::new().render_with(animate)),
             owner: Rc::new(Cell::new(None)),
+            placement: Placement::Right,
         }
+    }
+
+    /// A full-width management list uses the space below its row.
+    pub fn with_placement(mut self, placement: Placement) -> Self {
+        self.placement = placement;
+        self
     }
 
     pub fn overlay(&self) -> Entity<TooltipOverlay> {
@@ -173,7 +182,7 @@ impl<K: Copy + PartialEq + 'static> RowTooltipTrigger<K> {
         self.tooltips.owner.set(Some(self.key));
         let content = self.content.clone();
         let request = TooltipRequest::new(self.row_bounds(), move |window, cx| content(window, cx))
-            .placement(Placement::Right);
+            .placement(self.tooltips.placement);
         self.tooltips
             .overlay
             .update(cx, |overlay, cx| overlay.request_show(request, window, cx));

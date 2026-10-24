@@ -552,7 +552,9 @@ pub fn open_forward_dialog(
                 .title(title.clone())
                 // Dialog geometry is an API boundary that takes `Pixels`;
                 // the width follows the interface zoom through the rem.
-                .w(rems(DIALOG_WIDTH).to_pixels(window.rem_size()))
+                .w(rems(DIALOG_WIDTH)
+                    .to_pixels(window.rem_size())
+                    .min(window.viewport_size().width * 0.94))
                 .margin_top(window.viewport_size().height * DIALOG_TOP)
                 .max_h(window.viewport_size().height * DIALOG_MAX_HEIGHT)
                 // Closed by its buttons or Escape, not by a click beside it.

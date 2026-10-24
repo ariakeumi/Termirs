@@ -23,9 +23,8 @@ async fn connect(cx: &mut TestAppContext, handle: WindowHandle<Root>, id: HostId
     });
     cx.wait_for(handle.into(), Duration::from_secs(2), |window, cx| {
         window.render_frame(cx);
-        window
-            .try_find("status-connection")
-            .is_some_and(|status| status.label() == Some("已连接 console"))
+        window.try_find(("terminal-tab", 1u64)).is_some()
+            && tab_connection_state(window, ("terminal-tab", 1u64)).is_none()
     })
     .await;
 }
@@ -40,7 +39,9 @@ fn replace_text(window: &mut gpui_kit::Window, id: &'static str, text: &str, cx:
 async fn a_serial_host_is_made_from_its_device_and_line(cx: &mut TestAppContext) {
     let tester = Arc::new(FakeConnectionTester::default());
     let (handle, workspace) = open_workspace_with_tester(cx, HostStore::empty(), tester.clone());
-    in_frame(cx, handle, |window, cx| window.click("new-host-panel", cx));
+    in_frame(cx, handle, |window, cx| {
+        window.dispatch_action(Box::new(shellrs::app::NewHost), cx)
+    });
     in_frame(cx, handle, |window, cx| {
         // A new host is an SSH host.
         assert_eq!(
@@ -183,7 +184,8 @@ async fn an_open_serial_terminal_keeps_its_line_and_a_new_one_takes_the_new_rate
 
     // Reconnecting opens the line the tab first did; a new tab, the new one.
     in_frame(cx, handle, |window, cx| {
-        window.click(("reconnect", 1_u64), cx)
+        window.click(("terminal", 1_u64), cx);
+        window.dispatch_action(Box::new(ReconnectTerminal(RemoteTerminalId(1_u64))), cx)
     });
     cx.wait_for(handle.into(), Duration::from_secs(2), |_, _| {
         serial.lines().len() == 2
@@ -215,16 +217,13 @@ async fn a_serial_terminal_has_no_sftp_and_only_snippets_beside_it(cx: &mut Test
         Arc::new(FixedSerialTerminalTransportProvider::new(line.clone())),
     );
     connect(cx, handle, id).await;
-    in_frame(cx, handle, |window, _| {
+    in_frame(cx, handle, |window, cx| {
         assert!(window.try_find(("sftp", 1_u64)).is_none());
-        assert!(window.find(("reconnect", 1_u64)).visible());
-        assert_eq!(
-            window.find(("terminal-tab-os", 1_u64)).label(),
-            Some("串口")
-        );
+        assert!(window.try_find(("reconnect", 1_u64)).is_none());
+        assert!(window.try_find(("terminal-tab-os", 1_u64)).is_none());
         // Snippets type into the terminal, which a serial line takes; the
         // rest run commands beside it, which it has no room for.
-        assert!(window.find("tool-snippets").visible());
+        assert!(tool_offered(window, "tool-snippets", cx));
         for tool in [
             "tool-history",
             "tool-files",
@@ -232,7 +231,7 @@ async fn a_serial_terminal_has_no_sftp_and_only_snippets_beside_it(cx: &mut Test
             "tool-processes",
             "tool-monitor",
         ] {
-            assert!(window.try_find(tool).is_none(), "{tool}");
+            assert!(!tool_offered(window, tool, cx), "{tool}");
         }
     });
 
@@ -255,7 +254,7 @@ async fn a_serial_port_is_connected_to_without_saving_it(cx: &mut TestAppContext
         serial.clone(),
     );
     in_frame(cx, handle, |window, cx| {
-        window.click("temporary-connection", cx)
+        window.dispatch_action(Box::new(shellrs::app::NewTemporaryConnection), cx)
     });
     in_frame(cx, handle, |window, cx| {
         window.within("host-protocol").click(2usize, cx)

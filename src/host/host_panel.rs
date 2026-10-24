@@ -28,16 +28,13 @@ use crate::app::{
 };
 
 use crate::i18n::{UiLocale, t, tn};
-use crate::shared::{HostMark, RowTooltip, RowTooltips};
+use crate::shared::{RowTooltip, RowTooltips};
 
 use super::{
-    GroupId, Host, HostId, HostNode, HostOs, HostStore, NodeDrop, ProtocolKind,
-    first_matching_host, host_tree_items,
+    GroupId, Host, HostId, HostNode, HostStore, NodeDrop, first_matching_host, host_tree_items,
 };
 
-/// The host list of the left dock: a searchable, grouped tree of hosts.
-/// The workspace's sidebar shows it, and borrows its title and toolbar for
-/// the dock's title bar while it does.
+/// The searchable, grouped tree of hosts in the host management window.
 ///
 /// Owns the tree and search state; the host data lives in the shared
 /// `HostStore`, which this panel observes.
@@ -375,21 +372,6 @@ impl Render for HostPanel {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Plain snapshots for the row renderer: render callbacks must not
         // read entities.
-        let host_marks: Rc<HashMap<HostId, MarkOf>> = Rc::new(
-            self.store
-                .read(cx)
-                .hosts()
-                .iter()
-                .map(|host| {
-                    let mark = MarkOf {
-                        os: host.os,
-                        protocol: host.kind(),
-                        address: host.address.clone(),
-                    };
-                    (host.id, mark)
-                })
-                .collect(),
-        );
         let tooltips: Rc<HashMap<HostId, RowTooltip>> = Rc::new(
             self.store
                 .read(cx)
@@ -469,7 +451,6 @@ impl Render for HostPanel {
                                             entry,
                                             selected,
                                             &group_counts,
-                                            &host_marks,
                                             &row_interactions,
                                             cx,
                                         )
@@ -527,8 +508,7 @@ impl Render for HostPanel {
     }
 }
 
-/// A row that is not a host still has to reserve the badge's width, or the
-/// labels of groups and hosts would not line up.
+/// The folder lane shared by group rows and host names.
 fn plain_mark(icon: Icon, cx: &App) -> AnyElement {
     h_flex()
         .flex_shrink_0()
@@ -566,18 +546,10 @@ fn group_host_counts(
     counts
 }
 
-/// What a host row's mark is drawn from, taken in `render`.
-struct MarkOf {
-    os: Option<HostOs>,
-    protocol: ProtocolKind,
-    address: SharedString,
-}
-
 fn render_row(
     entry: &TreeEntry,
     selected: bool,
     group_counts: &HashMap<GroupId, usize>,
-    host_marks: &HashMap<HostId, MarkOf>,
     interactions: &RowInteractions,
     cx: &mut App,
 ) -> ListItem {
@@ -604,19 +576,8 @@ fn render_row(
             ("group-row", id.0).into(),
         ),
         Some(HostNode::Host(id)) => (
-            {
-                let mark = host_marks.get(&id);
-                HostMark::new(
-                    ("host-os", id.0),
-                    item.label.clone(),
-                    mark.map(|mark| mark.address.clone()).unwrap_or_default(),
-                    mark.and_then(|mark| mark.os),
-                )
-                .protocol(mark.map(|mark| mark.protocol).unwrap_or_default())
-            }
-            .small()
-            .without_tooltip()
-            .into_any_element(),
+            // Keep names aligned with group labels without a host badge.
+            div().size_5().flex_shrink_0().into_any_element(),
             ("host-row", id.0).into(),
         ),
         None => (

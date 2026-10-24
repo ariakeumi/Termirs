@@ -73,7 +73,7 @@ impl TerminalTransport for LocalPtyTransport {
         let mut command = shell.command_builder()?;
         command.env("TERM", "xterm-256color");
         command.env("COLORTERM", "truecolor");
-        command.env("TERM_PROGRAM", "ShellRS");
+        command.env("TERM_PROGRAM", "Termirs");
         // A folder gone since leaves the home folder, as with none.
         if let Some(directory) = directory.filter(|directory| directory.is_dir()) {
             command.cwd(directory);

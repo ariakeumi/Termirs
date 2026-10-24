@@ -58,10 +58,64 @@ pub struct AppSettings {
     pub notifications: NotificationSettings,
     /// 关键字高亮.
     pub terminal_highlight: TerminalHighlightSettings,
+    /// 应用 → 启动: open a local terminal when there are no tabs to restore.
+    pub open_local_terminal_on_startup: bool,
     /// 应用 → 窗口.
     pub window: WindowSettings,
+    /// Widths chosen by dragging the workspace's sidebars.
+    pub sidebar_widths: SidebarWidths,
     /// 键盘快捷键: what the user changed of them.
     pub shortcuts: ShortcutOverrides,
+}
+
+/// Workspace sidebar widths in logical pixels, independent of the dock layout.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SidebarWidths {
+    left: f32,
+    right: f32,
+}
+
+impl SidebarWidths {
+    pub const MIN_LEFT: f32 = 100.;
+    /// The tool cards need at least this width.
+    pub const MIN_RIGHT: f32 = 320.;
+
+    pub fn new(left: f32, right: f32) -> Self {
+        Self { left, right }.normalized()
+    }
+
+    pub fn left(&self) -> f32 {
+        self.left
+    }
+
+    pub fn right(&self) -> f32 {
+        self.right
+    }
+
+    fn normalized(mut self) -> Self {
+        let defaults = Self::default();
+        self.left = if self.left.is_finite() {
+            self.left.max(Self::MIN_LEFT)
+        } else {
+            defaults.left
+        };
+        self.right = if self.right.is_finite() {
+            self.right.max(Self::MIN_RIGHT)
+        } else {
+            defaults.right
+        };
+        self
+    }
+}
+
+impl Default for SidebarWidths {
+    fn default() -> Self {
+        Self {
+            left: 280.,
+            right: Self::MIN_RIGHT,
+        }
+    }
 }
 
 /// What 界面字号 offers, in pixels.
@@ -76,12 +130,15 @@ pub struct InterfaceSettings {
     /// 界面字号: the base font in pixels, which the interface's text and
     /// spacing follow. Terminals have their own.
     pub font_size: f32,
+    /// Open-tab labels in the sidebar, independent of interface zoom.
+    pub sidebar_font_size: f32,
 }
 
 impl Default for InterfaceSettings {
     fn default() -> Self {
         Self {
             font_size: DEFAULT_INTERFACE_FONT_SIZE,
+            sidebar_font_size: DEFAULT_INTERFACE_FONT_SIZE,
         }
     }
 }
@@ -324,7 +381,10 @@ fn readable_rules<'de, D: Deserializer<'de>>(
 /// 终端 → 本地终端.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct LocalTerminalSettings {
+    /// The label shared by local terminal tabs. Empty uses the default label.
+    pub tab_name: String,
     /// The program new and restarted local terminals run, a path or a
     /// command with any arguments, as typed. `None` is the system's default
     /// shell, found anew each time.
@@ -337,6 +397,7 @@ pub struct LocalTerminalSettings {
 impl Default for LocalTerminalSettings {
     fn default() -> Self {
         Self {
+            tab_name: String::new(),
             shell: None,
             keep_output: true,
         }
@@ -465,17 +526,22 @@ impl AppSettings {
     /// file nor a typed value can give the terminal a size of zero.
     pub fn normalized(mut self) -> Self {
         self.terminal_font = self.terminal_font.normalized();
+        self.sidebar_widths = self.sidebar_widths.normalized();
         // Whole pixels in range; what is not a number gives the default.
-        let size = self.interface.font_size;
-        self.interface.font_size = if size.is_finite() {
-            size.clamp(
-                *INTERFACE_FONT_SIZE_RANGE.start(),
-                *INTERFACE_FONT_SIZE_RANGE.end(),
-            )
-            .round()
-        } else {
-            DEFAULT_INTERFACE_FONT_SIZE
-        };
+        for size in [
+            &mut self.interface.font_size,
+            &mut self.interface.sidebar_font_size,
+        ] {
+            *size = if size.is_finite() {
+                size.clamp(
+                    *INTERFACE_FONT_SIZE_RANGE.start(),
+                    *INTERFACE_FONT_SIZE_RANGE.end(),
+                )
+                .round()
+            } else {
+                DEFAULT_INTERFACE_FONT_SIZE
+            };
+        }
         self.transfers.parallel = self.transfers.parallel.clamp(
             *PARALLEL_TRANSFERS_RANGE.start(),
             *PARALLEL_TRANSFERS_RANGE.end(),
@@ -806,7 +872,10 @@ mod tests {
             (f32::NAN, 16.),
         ] {
             let settings = AppSettings {
-                interface: InterfaceSettings { font_size: written },
+                interface: InterfaceSettings {
+                    font_size: written,
+                    ..InterfaceSettings::default()
+                },
                 ..AppSettings::default()
             };
             assert_eq!(settings.normalized().interface.font_size, kept, "{written}");
@@ -967,6 +1036,15 @@ mod tests {
         assert_eq!(themes.theme(ThemeMode::Dark).key(), "nord");
         assert_eq!(themes.app_theme(ThemeMode::Dark).key(), "nord");
         assert!(!themes.is_default_choice());
+    }
+
+    #[test]
+    fn a_local_terminal_opens_on_startup_only_when_chosen() {
+        let settings: AppSettings = serde_json::from_str("{}").unwrap();
+        assert!(!settings.open_local_terminal_on_startup);
+        let settings: AppSettings =
+            serde_json::from_str(r#"{"open_local_terminal_on_startup":true}"#).unwrap();
+        assert!(settings.open_local_terminal_on_startup);
     }
 
     #[test]

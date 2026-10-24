@@ -50,7 +50,7 @@ impl Workspace {
                         this.on_show_or_hide_app(&ShowOrHideApp, window, cx);
                     }
                     let server = this.cli_server.as_ref()?;
-                    let links = server.take_activation();
+                    let targets = server.take_activation();
                     let change = server.take_change();
                     for usage in server.take_usage() {
                         this.count(match usage {
@@ -63,10 +63,10 @@ impl Workspace {
                             CliUse::Credentials => Counter::CliCredentials,
                         });
                     }
-                    if let Some(links) = links {
+                    if let Some(targets) = targets {
                         crate::app::bring_forward(window, cx);
-                        for link in links {
-                            this.open_link(link, window, cx);
+                        for target in targets {
+                            this.open_target(target, window, cx);
                         }
                     }
                     change.map(|(change, reply)| (this.apply_cli_change(change, window, cx), reply))

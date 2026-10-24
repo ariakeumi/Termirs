@@ -58,6 +58,7 @@ pub fn apply(settings: AppSettings, window: &mut Window, cx: &mut App) {
     if cx.try_global::<UiLocale>() != Some(&UiLocale(locale)) {
         crate::i18n::set_locale(locale);
         cx.set_global(UiLocale(locale));
+        crate::app::refresh_menus(cx);
         window.refresh();
     }
 

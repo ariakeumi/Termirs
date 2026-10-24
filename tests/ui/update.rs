@@ -9,7 +9,7 @@ use crate::support::*;
 const RUNNING_VERSION: &str = "0.1.0";
 
 /// Where the fake installer says the restart goes.
-const INSTALLED_BUNDLE: &str = "/Applications/ShellRS.app";
+const INSTALLED_BUNDLE: &str = "/Applications/Termirs.app";
 
 /// Serves each channel's manifest, signed when asked for, and one package,
 /// and counts the requests.
@@ -107,7 +107,7 @@ impl Installer for FakeInstaller {
     fn clean_up(&self, _: &Version) {}
 }
 
-/// A copy of ShellRS that can install updates itself.
+/// A copy of Termirs that can install updates itself.
 fn installable() -> InstallKind {
     InstallKind::MacBundle {
         bundle: INSTALLED_BUNDLE.into(),
@@ -232,7 +232,7 @@ fn serve_updates_as(
             Channel::Stable,
             offered.map(|version| version.to_string()),
         )]),
-        package: b"the new ShellRS".to_vec(),
+        package: b"the new Termirs".to_vec(),
         fetches: AtomicUsize::new(0),
         channels: Mutex::default(),
         downloads: AtomicUsize::new(0),
@@ -364,7 +364,7 @@ async fn checking_by_hand_says_when_shellrs_is_up_to_date(cx: &mut TestAppContex
 }
 
 #[gpui_kit::test]
-async fn a_found_update_downloads_by_itself_and_the_title_bar_offers_it(cx: &mut TestAppContext) {
+async fn a_found_update_downloads_by_itself_and_the_about_page_offers_it(cx: &mut TestAppContext) {
     let (handle, workspace) = open_workspace(cx);
     let fixture = serve_updates(cx, &workspace, Ok("0.2.0"), installable());
     open_about_settings(cx, handle);
@@ -373,9 +373,7 @@ async fn a_found_update_downloads_by_itself_and_the_title_bar_offers_it(cx: &mut
         window.click("check-for-updates", cx)
     });
     cx.wait_for(handle.into(), Duration::from_secs(3), |window, _| {
-        window
-            .try_find("update-available")
-            .is_some_and(|button| button.label() == Some("新版本 0.2.0 已就绪"))
+        window.try_find("show-update").is_some()
     })
     .await;
     assert_eq!(fixture.downloads(), 1);
@@ -385,7 +383,7 @@ async fn a_found_update_downloads_by_itself_and_the_title_bar_offers_it(cx: &mut
     );
     assert_eq!(
         update_status(cx, handle),
-        "新版本 0.2.0 已下载，重启 ShellRS 即可完成更新。"
+        "新版本 0.2.0 已下载，重启 Termirs 即可完成更新。"
     );
     in_frame(cx, handle, |window, _| {
         // One button: restarting takes the place of 检查更新.
@@ -428,13 +426,19 @@ async fn the_update_dialog_links_the_changelog_and_restarts_into_the_new_version
     in_frame(cx, handle, |window, cx| {
         window.dispatch_action(Box::new(CheckForUpdates), cx)
     });
-    cx.wait_for(handle.into(), Duration::from_secs(3), |window, _| {
-        window.try_find("update-available").is_some()
+    cx.wait_for(handle.into(), Duration::from_secs(3), |_, cx| {
+        workspace
+            .read(cx)
+            .updater()
+            .read(cx)
+            .snapshot()
+            .badge()
+            .is_some()
     })
     .await;
 
     in_frame(cx, handle, |window, cx| {
-        window.click("update-available", cx)
+        window.dispatch_action(Box::new(shellrs::app::ShowUpdate), cx)
     });
     in_frame(cx, handle, |window, _| {
         assert!(window.try_find("update-ready").is_some());
@@ -493,12 +497,18 @@ async fn the_update_dialog_says_what_restarting_interrupts(cx: &mut TestAppConte
     in_frame(cx, handle, |window, cx| {
         window.dispatch_action(Box::new(CheckForUpdates), cx)
     });
-    cx.wait_for(handle.into(), Duration::from_secs(3), |window, _| {
-        window.try_find("update-available").is_some()
+    cx.wait_for(handle.into(), Duration::from_secs(3), |_, cx| {
+        workspace
+            .read(cx)
+            .updater()
+            .read(cx)
+            .snapshot()
+            .badge()
+            .is_some()
     })
     .await;
     in_frame(cx, handle, |window, cx| {
-        window.click("update-available", cx)
+        window.dispatch_action(Box::new(shellrs::app::ShowUpdate), cx)
     });
     // web-01 and staging-api start out connected, each with a terminal.
     cx.wait_for(handle.into(), Duration::from_secs(3), |window, _| {
@@ -510,9 +520,7 @@ async fn the_update_dialog_says_what_restarting_interrupts(cx: &mut TestAppConte
     .await;
 
     // The status bar is outside the dialog, under its backdrop.
-    in_frame(cx, handle, |window, cx| {
-        window.click("status-connection", cx)
-    });
+    in_frame(cx, handle, |window, cx| window.click("workspace", cx));
     in_frame(cx, handle, |window, _| {
         assert!(
             window.try_find("update-dialog").is_some(),
@@ -531,8 +539,14 @@ async fn a_ready_update_is_installed_on_quit_once(cx: &mut TestAppContext) {
             updater.check(cx);
         });
     });
-    cx.wait_for(handle.into(), Duration::from_secs(3), |window, _| {
-        window.try_find("update-available").is_some()
+    cx.wait_for(handle.into(), Duration::from_secs(3), |_, cx| {
+        workspace
+            .read(cx)
+            .updater()
+            .read(cx)
+            .snapshot()
+            .badge()
+            .is_some()
     })
     .await;
     assert!(fixture.installer.applied().is_empty());
@@ -557,17 +571,14 @@ async fn an_unsupported_install_offers_the_download_page(cx: &mut TestAppContext
         window.click("check-for-updates", cx)
     });
     wait_for_update_status(cx, handle, |status| {
-        status == "发现新版本 0.2.0。这份 ShellRS 不是 AppImage，请用安装它的方式更新。"
+        status == "发现新版本 0.2.0。这份 Termirs 不是 AppImage，请用安装它的方式更新。"
     })
     .await;
     assert_eq!(fixture.downloads(), 0);
     in_frame(cx, handle, |window, _| {
         assert!(window.try_find("open-download-page").is_some());
         assert!(window.try_find("download-update").is_none());
-        assert_eq!(
-            window.find("update-available").label(),
-            Some("新版本 0.2.0 可用")
-        );
+        assert!(window.try_find("update-available").is_none());
     });
 }
 
@@ -579,7 +590,7 @@ async fn a_portable_copy_downloads_the_portable_zip(cx: &mut TestAppContext) {
         &workspace,
         Ok("0.2.0"),
         InstallKind::WindowsPortable {
-            root: r"D:\Tools\ShellRS".into(),
+            root: r"D:\Tools\Termirs".into(),
         },
         WINDOWS_PORTABLE,
     );
@@ -603,7 +614,7 @@ async fn a_read_only_portable_copy_links_the_portable_zip(cx: &mut TestAppContex
         cx,
         &workspace,
         Ok("0.2.0"),
-        InstallKind::Unsupported(Unsupported::ReadOnly(r"C:\Program Files\ShellRS".into())),
+        InstallKind::Unsupported(Unsupported::ReadOnly(r"C:\Program Files\Termirs".into())),
         WINDOWS_PORTABLE,
     );
     open_about_settings(cx, handle);
@@ -611,7 +622,7 @@ async fn a_read_only_portable_copy_links_the_portable_zip(cx: &mut TestAppContex
         window.click("check-for-updates", cx)
     });
     wait_for_update_status(cx, handle, |status| {
-        status == r"发现新版本 0.2.0。没有权限写入 C:\Program Files\ShellRS，无法自动更新。"
+        status == r"发现新版本 0.2.0。没有权限写入 C:\Program Files\Termirs，无法自动更新。"
     })
     .await;
     assert_eq!(fixture.downloads(), 0);
@@ -690,13 +701,13 @@ async fn switching_the_update_channel_looks_at_that_channel(cx: &mut TestAppCont
     // With 自动升级 on, the other channel is looked at right away.
     set_update_channel(cx, &workspace, Channel::Beta);
     wait_for_update_status(cx, handle, |status| {
-        status == "新版本 0.2.0-beta.1 已下载，重启 ShellRS 即可完成更新。"
+        status == "新版本 0.2.0-beta.1 已下载，重启 Termirs 即可完成更新。"
     })
     .await;
     assert_eq!(fixture.channels(), [Channel::Stable, Channel::Beta]);
     assert_eq!(update_channel_label(cx, handle).as_deref(), Some("Beta"));
     in_frame(cx, handle, |window, _| {
-        assert!(window.try_find("update-available").is_some());
+        assert!(window.try_find("show-update").is_some());
     });
 
     // Back on stable, the beta downloaded is no longer offered.

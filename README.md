@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/logo/shellrs.svg" width="96" alt="ShellRS">
+  <img src="assets/logo/shellrs.png" width="96" alt="Termirs">
 </p>
 
-<h1 align="center">ShellRS</h1>
+<h1 align="center">Termirs</h1>
 
 <p align="center">
   A high-performance, native, cross-platform SSH client written in Rust, with a GPU-rendered interface: Xshell-style host management, WinSCP-style SFTP and port forwarding, all in one window.
@@ -20,14 +20,14 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/en/main-dark.png">
-  <img src="docs/screenshots/en/main-light.png" alt="ShellRS main window: a grouped host tree on the left, htop running in a remote terminal on the right, connection latency in the tab bar">
+  <img src="docs/screenshots/en/main-light.png" alt="Termirs main window: a grouped host tree on the left, htop running in a remote terminal on the right, connection latency in the tab bar">
 </picture>
 
 ## About
 
-ShellRS brings Xshell-style host management and tabbed terminals, a WinSCP-style dual-pane SFTP browser and SSH port forwarding together in one cross-platform app, which bastion hosts such as JumpServer can launch the way they launch Xshell and WinSCP. It is written in Rust, and its UI is built on GPUI, the GPU-accelerated UI framework of the Zed editor (through [gpui-kit](https://gpui-kit.com)). There is no Electron and no JVM.
+Termirs brings Xshell-style host management and tabbed terminals, a WinSCP-style dual-pane SFTP browser and SSH port forwarding together in one cross-platform app, which bastion hosts such as JumpServer can launch the way they launch Xshell and WinSCP. It is written in Rust, and its UI is built on GPUI, the GPU-accelerated UI framework of the Zed editor (through [gpui-kit](https://gpui-kit.com)). There is no Electron and no JVM.
 
-Hosts, groups, credentials and forwarding rules live in a local SQLite database. Passwords and key passphrases go only into the system keychain (macOS Keychain, Windows Credential Manager, Linux Secret Service); the database never holds a secret. ShellRS also ships a `shellrs` command that lets AI agents such as Claude Code or Codex run commands and transfer files on your saved hosts without ever seeing a password.
+Hosts, groups, credentials and forwarding rules live in a local SQLite database. Passwords and key passphrases go only into the system keychain (macOS Keychain, Windows Credential Manager, Linux Secret Service); the database never holds a secret. Termirs also ships a `shellrs` command that lets AI agents such as Claude Code or Codex run commands and transfer files on your saved hosts without ever seeing a password.
 
 ## Features
 
@@ -64,22 +64,22 @@ Hosts, groups, credentials and forwarding rules live in a local SQLite database.
 
 - A dual-pane browser modeled on WinSCP Commander: symmetric local and remote panes with WinSCP's columns, path labels, bookmarks and shortcuts (F5, F2, F7, F8…).
 - Upload and download by dragging or by shortcut, recursively. Start new transfers while one runs; they wait in a per-tab transfer queue.
-- Resumable transfers: data goes to a `.filepart` first, dropped connections are retried after 1, 3 and 10 seconds, and after a restart ShellRS offers to resume the same transfer.
+- Resumable transfers: data goes to a `.filepart` first, dropped connections are retried after 1, 3 and 10 seconds, and after a restart Termirs offers to resume the same transfer.
 - Delete (local items go to the Trash), rename, create, and change permissions (a 3×3 grid plus octal, optionally recursive).
 - Built-in editor: double-click a text file to edit it, ⌘S writes it back in place, after checking nobody else changed it; syntax highlighting for common formats. Images and Markdown can be previewed.
 - Each SFTP tab has its own connection and asks only for the SFTP subsystem, so no shell is needed on the server.
 
 **Opening from a bastion host**
 
-- Launched the way Xshell and WinSCP are: in the client of a bastion host such as JumpServer, set ShellRS as the SSH or SFTP client. An `ssh://` link opens a terminal, an `sftp://` link an SFTP tab.
-- Understands Xshell's `-url` and `-newtab` and WinSCP's `/sessionname=`. When ShellRS is already running, the link opens there.
+- Launched the way Xshell and WinSCP are: in the client of a bastion host such as JumpServer, set Termirs as the SSH or SFTP client. An `ssh://` link opens a terminal, an `sftp://` link an SFTP tab.
+- Understands Xshell's `-url` and `-newtab` and WinSCP's `/sessionname=`. When Termirs is already running, the link opens there.
 - What opens is an unsaved external connection: it stays out of the host list, keeps the link's password in memory only and goes away with its tabs. Each connection uses a single channel, so bastion hosts that allow no more still work. See the [user manual](docs/manual.md#opening-from-a-bastion-host-external-connections).
 
 **Port forwarding**
 
 - Local (`-L`), remote (`-R`) and dynamic (`-D`, SOCKS5 / SOCKS4) forwards.
 - The rule dialog draws a live diagram and a one-line explanation of where connections enter and where they go.
-- Every rule keeps its own SSH connection and reconnects three times after a drop; rules can start with ShellRS.
+- Every rule keeps its own SSH connection and reconnects three times after a drop; rules can start with Termirs.
 
 **Credentials**
 
@@ -88,12 +88,12 @@ Hosts, groups, credentials and forwarding rules live in a local SQLite database.
 
 **A CLI for AI agents**
 
-- `shellrs hosts` / `credentials` / `exec` / `upload` / `download` / `sync`: manage hosts and credentials, run commands, move and sync files. The running ShellRS logs in on the command's behalf, so the command itself never reads a password or private key.
+- `shellrs hosts` / `credentials` / `exec` / `upload` / `download` / `sync`: manage hosts and credentials, run commands, move and sync files. The running Termirs logs in on the command's behalf, so the command itself never reads a password or private key.
 - Install `shellrs` into your PATH and an Agent Skill for Claude Code, Codex, OpenCode or WorkBuddy from the settings page.
 
 **Security and updates**
 
-- Secrets stay in the system keychain. Host keys are recorded in ShellRS's own `known_hosts`, never in `~/.ssh`.
+- Secrets stay in the system keychain. Host keys are recorded in Termirs's own `known_hosts`, never in `~/.ssh`.
 - In-app updates: the update manifest is minisign-signed and each package is checked against its SHA-256. Updates download in the background and install on restart or quit. There are stable and beta channels, and an update check sends only the version, OS and CPU architecture.
 - Anonymous usage statistics: sent to Aptabase with only the version, OS, CPU architecture and how often each feature is used, never hosts, credentials, commands or any identifier. Turn them off in Settings › About.
 
@@ -125,23 +125,23 @@ Download from [shellrs.com/download](https://shellrs.com/download), which offers
 
 | System | Package | Notes |
 | --- | --- | --- |
-| macOS 11+ (Apple Silicon) | `ShellRS-<version>-macos-aarch64.dmg` | Signed and notarized. Open the DMG and drag ShellRS into Applications |
-| macOS 11+ (Intel) | `ShellRS-<version>-macos-x86_64.dmg` | Signed and notarized. Open the DMG and drag ShellRS into Applications |
-| Windows x64 | `ShellRS-<version>-windows-x86_64-setup.exe` | Installs per user, no administrator rights needed. The installer is not signed yet; if SmartScreen stops it, choose "More info › Run anyway" |
-| Windows x64 (portable) | `ShellRS-<version>-windows-x86_64-portable.zip` | Unzip into a folder you can write to and run `shellrs.exe`; its data stays in the `data` folder beside it. See [Windows portable](docs/manual.md#windows-portable) |
-| Linux x64 | `ShellRS-<version>-linux-x86_64.AppImage` | `chmod +x` and run. Needs glibc 2.31 or newer (Ubuntu 20.04, Debian 11 and later) |
+| macOS 11+ (Apple Silicon) | `Termirs-<version>-macos-aarch64.dmg` | Signed and notarized. Open the DMG and drag Termirs into Applications |
+| macOS 11+ (Intel) | `Termirs-<version>-macos-x86_64.dmg` | Signed and notarized. Open the DMG and drag Termirs into Applications |
+| Windows x64 | `Termirs-<version>-windows-x86_64-setup.exe` | Installs per user, no administrator rights needed. The installer is not signed yet; if SmartScreen stops it, choose "More info › Run anyway" |
+| Windows x64 (portable) | `Termirs-<version>-windows-x86_64-portable.zip` | Unzip into a folder you can write to and run `shellrs.exe`; its data stays in the `data` folder beside it. See [Windows portable](docs/manual.md#windows-portable) |
+| Linux x64 | `Termirs-<version>-linux-x86_64.AppImage` | `chmod +x` and run. Needs glibc 2.31 or newer (Ubuntu 20.04, Debian 11 and later) |
 
 Every package comes with a minisign signature (`.minisig`), and each release has a `SHA256SUMS` file.
 
-Once installed, ShellRS keeps itself up to date: it checks, downloads and verifies new versions in the background, then shows an icon in the top-right corner of the title bar; click it and choose "Restart to update", or just quit and the update is installed on the way out. Automatic updates are unavailable when ShellRS runs from inside the DMG or outside the Applications folder, on Linux when it isn't run as the AppImage, or when the Windows portable copy's folder can't be written to.
+Once installed, Termirs keeps itself up to date: it checks, downloads and verifies new versions in the background, then shows an icon in the top-right corner of the title bar; click it and choose "Restart to update", or just quit and the update is installed on the way out. Automatic updates are unavailable when Termirs runs from inside the DMG or outside the Applications folder, on Linux when it isn't run as the AppImage, or when the Windows portable copy's folder can't be written to.
 
 ## Getting started
 
 1. Click "New host…" in the title bar (⌘N, or Ctrl+N on Windows and Linux) and fill in the address, port and login. Passwords go into the system keychain.
 2. Double-click a host to open a terminal. On the first connection you're asked to confirm the host key.
 3. Right-click a host and choose "Open SFTP", or click "SFTP" at the right of the terminal's tab bar. Drag files between the two panes to transfer them.
-4. The three icons after "ShellRS" in the title bar switch the sidebar between hosts, port forwards and credentials.
-5. ⌘T (Ctrl+T) opens a local terminal. Drag a tab to the top, bottom, left or right edge of the tab area to split it.
+4. The three icons after "Termirs" in the title bar switch the sidebar between hosts, port forwards and credentials.
+5. ⌘L (Ctrl+T) opens a local terminal. Drag a tab to the top, bottom, left or right edge of the tab area to split it.
 
 ## For AI agents
 
@@ -155,7 +155,7 @@ shellrs download <ID> /var/log/syslog ./logs/      # download
 shellrs sync <ID> ./dist /opt/app --delete         # sync a folder, skipping unchanged files
 ```
 
-The command hands each request to the running ShellRS, which logs in with the saved settings and keychain. An unknown host or a missing password fails right away with a stable error code instead of a prompt that would hang the agent. See the [user manual](docs/manual.md#external-cli) for details.
+The command hands each request to the running Termirs, which logs in with the saved settings and keychain. An unknown host or a missing password fails right away with a stable error code instead of a prompt that would hang the agent. See the [user manual](docs/manual.md#external-cli) for details.
 
 ## Building from source
 
@@ -206,8 +206,8 @@ cargo test
 - [keyring](https://crates.io/crates/keyring): the system keychain
 - [Simple Icons](https://simpleicons.org): the OS logos on host badges and the Docker logo in the right sidebar (CC0)
 - [Material Icon Theme](https://github.com/material-extensions/vscode-material-icon-theme): the SFTP lists' color icons (MIT)
-- [WinSCP](https://winscp.net) and Xshell: the interaction designs ShellRS follows
+- [WinSCP](https://winscp.net) and Xshell: the interaction designs Termirs follows
 
 ## License
 
-ShellRS is licensed under the [GNU General Public License v3.0](LICENSE). You may use, modify and redistribute it, commercially or not, but any modified version you distribute must come with its complete source code under the GPL-3.0 as well.
+Termirs is licensed under the [GNU General Public License v3.0](LICENSE). You may use, modify and redistribute it, commercially or not, but any modified version you distribute must come with its complete source code under the GPL-3.0 as well.

@@ -5,7 +5,8 @@ use crate::support::*;
 
 #[gpui_kit::test]
 fn search_filters_the_tree(cx: &mut TestAppContext) {
-    let (handle, _) = open_workspace(cx);
+    let (handle, workspace) = open_workspace(cx);
+    let handle = open_host_manager(cx, handle, &workspace);
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
@@ -32,7 +33,8 @@ fn search_filters_the_tree(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn search_finds_a_group_by_name_with_all_of_it(cx: &mut TestAppContext) {
-    let (handle, _) = open_workspace(cx);
+    let (handle, workspace) = open_workspace(cx);
+    let handle = open_host_manager(cx, handle, &workspace);
     in_frame(cx, handle, |window, cx| {
         window.click("host-search", cx);
         window.input("生产", cx);
@@ -60,7 +62,8 @@ fn group_expansion_survives_reopening_the_database(cx: &mut TestAppContext) {
     for host in seed.hosts() {
         database.insert_host(host).unwrap();
     }
-    let (handle, _) = open_workspace_with_store(cx, HostStore::load(database).unwrap());
+    let (handle, workspace) = open_workspace_with_store(cx, HostStore::load(database).unwrap());
+    let handle = open_host_manager(cx, handle, &workspace);
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
@@ -88,7 +91,8 @@ fn group_expansion_survives_reopening_the_database(cx: &mut TestAppContext) {
             .expanded
     );
 
-    let (reopened, _) = open_workspace_with_store(cx, HostStore::load(database).unwrap());
+    let (reopened, workspace) = open_workspace_with_store(cx, HostStore::load(database).unwrap());
+    let reopened = open_host_manager(cx, reopened, &workspace);
     cx.update_window(reopened.into(), |_, window, cx| {
         window.render_frame(cx);
         assert!(window.find(("group-row", PRODUCTION)).visible());
@@ -128,7 +132,8 @@ fn expand_and_collapse_all_groups_include_nested_groups_and_persist(cx: &mut Tes
     for host in seed.hosts() {
         database.insert_host(host).unwrap();
     }
-    let (handle, _) = open_workspace_with_store(cx, HostStore::load(database).unwrap());
+    let (handle, workspace) = open_workspace_with_store(cx, HostStore::load(database).unwrap());
+    let handle = open_host_manager(cx, handle, &workspace);
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
@@ -175,7 +180,8 @@ fn expand_and_collapse_all_groups_include_nested_groups_and_persist(cx: &mut Tes
             .iter()
             .all(|group| group.expanded)
     );
-    let (reopened, _) = open_workspace_with_store(cx, HostStore::load(database).unwrap());
+    let (reopened, workspace) = open_workspace_with_store(cx, HostStore::load(database).unwrap());
+    let reopened = open_host_manager(cx, reopened, &workspace);
     cx.update_window(reopened.into(), |_, window, cx| {
         window.render_frame(cx);
         assert!(window.find(("group-row", nested.0)).visible());
@@ -199,6 +205,7 @@ fn connect_group_opens_each_host_in_its_subtree(cx: &mut TestAppContext) {
         Some(grandchild),
     ));
     let (handle, workspace) = open_workspace_with_store(cx, store);
+    let handle = open_host_manager(cx, handle, &workspace);
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
@@ -234,6 +241,7 @@ fn connect_group_opens_each_host_in_its_subtree(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn dragging_a_host_into_a_group_updates_the_host_tree(cx: &mut TestAppContext) {
     let (handle, workspace) = open_workspace(cx);
+    let handle = open_host_manager(cx, handle, &workspace);
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
@@ -276,6 +284,7 @@ fn dragging_a_host_into_a_group_updates_the_host_tree(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn dragging_peers_changes_their_order_and_groups_can_nest(cx: &mut TestAppContext) {
     let (handle, workspace) = open_workspace(cx);
+    let handle = open_host_manager(cx, handle, &workspace);
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
         window
@@ -318,6 +327,7 @@ fn dragging_peers_changes_their_order_and_groups_can_nest(cx: &mut TestAppContex
 #[gpui_kit::test]
 fn dragging_a_host_to_blank_tree_space_moves_it_to_the_root(cx: &mut TestAppContext) {
     let (handle, workspace) = open_workspace(cx);
+    let handle = open_host_manager(cx, handle, &workspace);
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
         let from = window.find(("host-row", DB_01)).bounds().center();
@@ -344,7 +354,8 @@ fn dragged_order_survives_reopening_the_database(cx: &mut TestAppContext) {
     for host in seed.hosts() {
         database.insert_host(host).unwrap();
     }
-    let (handle, _) = open_workspace_with_store(cx, HostStore::load(database).unwrap());
+    let (handle, workspace) = open_workspace_with_store(cx, HostStore::load(database).unwrap());
+    let handle = open_host_manager(cx, handle, &workspace);
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
@@ -371,6 +382,7 @@ fn dragged_order_survives_reopening_the_database(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 async fn new_group_from_the_toolbar_appears_in_the_tree(cx: &mut TestAppContext) {
     let (handle, workspace) = open_workspace(cx);
+    let handle = open_host_manager(cx, handle, &workspace);
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
@@ -426,6 +438,7 @@ async fn new_group_from_the_toolbar_appears_in_the_tree(cx: &mut TestAppContext)
 #[gpui_kit::test]
 async fn a_new_host_in_a_group_starts_out_in_that_group(cx: &mut TestAppContext) {
     let (handle, workspace) = open_workspace(cx);
+    let handle = open_host_manager(cx, handle, &workspace);
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
@@ -464,6 +477,7 @@ async fn a_new_host_in_a_group_starts_out_in_that_group(cx: &mut TestAppContext)
 #[gpui_kit::test]
 async fn renaming_a_group_keeps_the_hosts_under_it(cx: &mut TestAppContext) {
     let (handle, workspace) = open_workspace(cx);
+    let handle = open_host_manager(cx, handle, &workspace);
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
@@ -507,6 +521,8 @@ async fn renaming_a_group_keeps_the_hosts_under_it(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 async fn deleting_a_group_removes_its_hosts_and_leaves_their_tabs(cx: &mut TestAppContext) {
     let (handle, workspace) = open_workspace(cx);
+    let main = handle;
+    let handle = open_host_manager(cx, handle, &workspace);
 
     // db-01 joins web-01, which starts connected, in having an open tab.
     cx.update_window(handle.into(), |_, window, cx| {
@@ -558,7 +574,7 @@ async fn deleting_a_group_removes_its_hosts_and_leaves_their_tabs(cx: &mut TestA
     });
 
     // A deleted host's tab still connects, as it took the host.
-    cx.update_window(handle.into(), |_, window, cx| {
+    cx.update_window(main.into(), |_, window, cx| {
         window.render_frame(cx);
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx);
         window.dispatch_action(
@@ -567,7 +583,7 @@ async fn deleting_a_group_removes_its_hosts_and_leaves_their_tabs(cx: &mut TestA
         );
     })
     .unwrap();
-    cx.wait_for(handle.into(), Duration::from_secs(2), |_, cx| {
+    cx.wait_for(main.into(), Duration::from_secs(2), |_, cx| {
         workspace.read(cx).has_connection(HostId(WEB_01), cx)
     })
     .await;
@@ -583,6 +599,8 @@ async fn groups_and_hosts_are_read_back_from_the_database(cx: &mut TestAppContex
     assert_eq!(store.groups().len(), 0);
     assert_eq!(store.hosts().len(), 0);
     let (handle, workspace) = open_workspace_with_store(cx, store);
+    let main = handle;
+    let handle = open_host_manager(cx, handle, &workspace);
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
@@ -641,9 +659,9 @@ async fn groups_and_hosts_are_read_back_from_the_database(cx: &mut TestAppContex
     .unwrap();
     cx.run_until_parked();
 
-    cx.wait_for(handle.into(), Duration::from_secs(2), |window, cx| {
+    cx.wait_for(main.into(), Duration::from_secs(2), |window, cx| {
         window.render_frame(cx);
-        window.find("status-connection").label() == Some("已连接 web-01")
+        active_connection_state(&workspace, cx) == Some(ConnectionState::Connected)
     })
     .await;
 
@@ -668,7 +686,8 @@ async fn groups_and_hosts_are_read_back_from_the_database(cx: &mut TestAppContex
 
 #[gpui_kit::test]
 fn copy_host_address_puts_the_host_on_the_clipboard(cx: &mut TestAppContext) {
-    let (handle, _) = open_workspace(cx);
+    let (handle, workspace) = open_workspace(cx);
+    let handle = open_host_manager(cx, handle, &workspace);
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
@@ -686,7 +705,8 @@ fn copy_host_address_puts_the_host_on_the_clipboard(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn hovering_a_host_row_shows_its_address_beside_the_row(cx: &mut TestAppContext) {
-    let (handle, _) = open_workspace(cx);
+    let (handle, workspace) = open_workspace(cx);
+    let handle = open_host_manager(cx, handle, &workspace);
     let row = ("host-row", WEB_01);
 
     cx.update_window(handle.into(), |_, window, cx| {
@@ -703,7 +723,8 @@ fn hovering_a_host_row_shows_its_address_beside_the_row(cx: &mut TestAppContext)
         assert_eq!(tooltip.label(), Some("root@10.0.1.12:22"));
         // Beside the row, so it never covers the rows below.
         let row_bounds = window.find(row).bounds();
-        assert!(tooltip.bounds().left() >= row_bounds.right());
+        assert!(tooltip.bounds().left() >= px(0.));
+        assert!(tooltip.bounds().right() <= window.viewport_size().width);
         assert!((tooltip.bounds().center().y - row_bounds.center().y).abs() < px(2.));
         // A click puts it away.
         window.click(row, cx);
@@ -727,7 +748,8 @@ fn a_host_rows_tooltip_shows_its_notes_under_the_address(cx: &mut TestAppContext
         .draft()
         .with_notes("机房 A\n负责人：张三");
     store.update_unnotified(web, draft);
-    let (handle, _) = open_workspace_with_store(cx, store);
+    let (handle, workspace) = open_workspace_with_store(cx, store);
+    let handle = open_host_manager(cx, handle, &workspace);
     let hover = |cx: &mut TestAppContext, id: u64| {
         cx.update_window(handle.into(), |_, window, cx| {
             window.render_frame(cx);
@@ -764,7 +786,8 @@ fn a_host_rows_tooltip_shows_its_notes_under_the_address(cx: &mut TestAppContext
 
 #[gpui_kit::test]
 fn the_row_tooltip_follows_the_pointer_down_the_list(cx: &mut TestAppContext) {
-    let (handle, _) = open_workspace(cx);
+    let (handle, workspace) = open_workspace(cx);
+    let handle = open_host_manager(cx, handle, &workspace);
     let move_to = |cx: &mut TestAppContext, id: u64| {
         cx.update_window(handle.into(), |_, window, cx| {
             let row = window.find(("host-row", id)).bounds();
@@ -807,6 +830,7 @@ fn the_row_tooltip_follows_the_pointer_down_the_list(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn copy_host_id_puts_the_public_id_on_the_clipboard(cx: &mut TestAppContext) {
     let (handle, workspace) = open_workspace(cx);
+    let handle = open_host_manager(cx, handle, &workspace);
     let public_id = workspace.read_with(cx, |workspace, cx| {
         workspace
             .store()
@@ -832,7 +856,7 @@ fn copy_host_id_puts_the_public_id_on_the_clipboard(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-async fn the_tree_falls_back_to_the_first_letter_until_a_host_is_probed(cx: &mut TestAppContext) {
+async fn host_names_are_shown_without_operating_system_badges(cx: &mut TestAppContext) {
     let mut store = HostStore::empty();
     let probed = store.insert_unnotified(HostDraft::new(
         "web-01",
@@ -851,27 +875,26 @@ async fn the_tree_falls_back_to_the_first_letter_until_a_host_is_probed(cx: &mut
         None,
     ));
     store.set_host_os_unnotified(probed, Some(HostOs::Debian));
-    let (handle, _) = open_workspace_with_store(cx, store);
+    let (handle, workspace) = open_workspace_with_store(cx, store);
+    let handle = open_host_manager(cx, handle, &workspace);
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        assert_eq!(window.find(("host-os", probed.0)).label(), Some("Debian"));
-        assert_eq!(
-            window.find(("host-os", fresh.0)).label(),
-            Some("未探测到系统"),
-            "没探测过就退回名称首字的中性徽章"
-        );
-        // The badges carry brand colours of their own, so they have to hold up
-        // in both themes.
-        window.click("theme-toggle", cx);
+        for id in [probed, fresh] {
+            assert!(window.find(("host-row", id.0)).visible());
+            assert!(window.try_find(("host-os", id.0)).is_none());
+        }
+        window.dispatch_action(Box::new(shellrs::app::ToggleTheme), cx);
     })
     .unwrap();
     cx.run_until_parked();
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        assert!(window.find(("host-os", probed.0)).visible());
-        assert!(window.find(("host-os", fresh.0)).visible());
+        for id in [probed, fresh] {
+            assert!(window.find(("host-row", id.0)).visible());
+            assert!(window.try_find(("host-os", id.0)).is_none());
+        }
     })
     .unwrap();
 }

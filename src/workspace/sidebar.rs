@@ -1,85 +1,29 @@
 use gpui_kit::component::{
-    ActiveTheme as _, Icon, Sizable as _,
+    ActiveTheme as _, Sizable as _,
     button::{Button, ButtonVariants as _},
     dock::{BasePanel, Panel, PanelControl, PanelEvent},
-    h_flex,
-    menu::PopupMenu,
-    v_flex,
+    h_flex, v_flex,
 };
 use gpui_kit::*;
 
-use crate::app::{CatalogIcon, OpenSettings};
-use crate::credential::CredentialPanel;
-use crate::forward::ForwardPanel;
-use crate::host::{HostPanel, import_menu_items};
+use crate::app::{CatalogIcon, OpenSettings, ShowHosts};
 use crate::i18n::t;
 
-/// Which list the left dock is showing.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum SidebarMode {
-    #[default]
-    Hosts,
-    Forwards,
-    Credentials,
-}
+use super::tab_sidebar::TabSidebar;
 
-/// The left dock's one panel: the host tree, the port-forwarding list or
-/// the credential list, whichever the title bar's switch picked, over the
-/// 设置 button they share.
-///
-/// One panel showing either list rather than two panels swapped in the dock:
-/// swapping would take the displaced list out of the dock (and the focus
-/// with it), and two panels in one tab group always draw a tab bar. Every
-/// list stays alive while hidden, so each keeps its search, its selection
-/// and its scroll position.
+/// The main window's open tabs and shortcuts to settings and host management.
 pub struct Sidebar {
-    mode: SidebarMode,
-    hosts: Entity<HostPanel>,
-    forwards: Entity<ForwardPanel>,
-    credentials: Entity<CredentialPanel>,
+    tabs: Entity<TabSidebar>,
+    target: FocusHandle,
 }
 
 impl Sidebar {
-    pub fn new(
-        hosts: Entity<HostPanel>,
-        forwards: Entity<ForwardPanel>,
-        credentials: Entity<CredentialPanel>,
-    ) -> Self {
-        Self {
-            mode: SidebarMode::default(),
-            hosts,
-            forwards,
-            credentials,
-        }
+    pub fn new(tabs: Entity<TabSidebar>, target: FocusHandle) -> Self {
+        Self { tabs, target }
     }
 
-    pub fn mode(&self) -> SidebarMode {
-        self.mode
-    }
-
-    /// Show one of the lists and give it the focus. The list that was
-    /// showing leaves the element tree, and a focus left behind on it would
-    /// take every window-level shortcut's dispatch path with it.
-    pub fn show(&mut self, mode: SidebarMode, window: &mut Window, cx: &mut Context<Self>) {
-        self.mode = mode;
-        let handle = self.focus_handle(cx);
-        window.focus(&handle, cx);
-        cx.notify();
-    }
-
-    /// Put the keyboard in the search field of the list being shown.
     pub fn focus_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        match self.mode {
-            SidebarMode::Hosts => self
-                .hosts
-                .update(cx, |panel, cx| panel.focus_search(window, cx)),
-            SidebarMode::Forwards => self
-                .forwards
-                .update(cx, |panel, cx| panel.focus_search(window, cx)),
-            SidebarMode::Credentials => self
-                .credentials
-                .update(cx, |panel, cx| panel.focus_search(window, cx)),
-        }
+        window.focus(&self.tabs.read(cx).focus_handle(cx), cx);
     }
 }
 
@@ -87,11 +31,7 @@ impl EventEmitter<PanelEvent> for Sidebar {}
 
 impl Focusable for Sidebar {
     fn focus_handle(&self, cx: &App) -> FocusHandle {
-        match self.mode {
-            SidebarMode::Hosts => self.hosts.read(cx).focus_handle(cx),
-            SidebarMode::Forwards => self.forwards.read(cx).focus_handle(cx),
-            SidebarMode::Credentials => self.credentials.read(cx).focus_handle(cx),
-        }
+        self.tabs.read(cx).focus_handle(cx)
     }
 }
 
@@ -109,44 +49,9 @@ impl BasePanel for Sidebar {
     }
 }
 
-/// The dock's title bar belongs to whichever list is showing.
 impl Panel for Sidebar {
-    fn title(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        match self.mode {
-            SidebarMode::Hosts => self
-                .hosts
-                .update(cx, |panel, cx| panel.title(window, cx).into_any_element()),
-            SidebarMode::Forwards => self.forwards.read(cx).title().into_any_element(),
-            SidebarMode::Credentials => self.credentials.read(cx).title().into_any_element(),
-        }
-    }
-
-    fn toolbar_buttons(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Option<Vec<Button>> {
-        match self.mode {
-            SidebarMode::Hosts => self
-                .hosts
-                .update(cx, |panel, cx| panel.toolbar_buttons(window, cx)),
-            SidebarMode::Forwards => Some(self.forwards.read(cx).toolbar_buttons()),
-            SidebarMode::Credentials => Some(self.credentials.read(cx).toolbar_buttons()),
-        }
-    }
-
-    /// The dock's 「…」 menu: the host list's import commands, which are
-    /// used too rarely for a toolbar button of their own.
-    fn dropdown_menu(
-        &mut self,
-        menu: PopupMenu,
-        _: &mut Window,
-        _: &mut Context<Self>,
-    ) -> PopupMenu {
-        match self.mode {
-            SidebarMode::Hosts => import_menu_items(menu),
-            SidebarMode::Forwards | SidebarMode::Credentials => menu,
-        }
+    fn title(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        t!("workspace.tabs.title")
     }
 
     fn zoom_control(&self, _: &App) -> Option<PanelControl> {
@@ -160,35 +65,43 @@ impl Panel for Sidebar {
 
 impl Render for Sidebar {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let list = match self.mode {
-            SidebarMode::Hosts => self.hosts.clone().into_any_element(),
-            SidebarMode::Forwards => self.forwards.clone().into_any_element(),
-            SidebarMode::Credentials => self.credentials.clone().into_any_element(),
-        };
+        let settings = self.target.clone();
+        let hosts = self.target.clone();
         v_flex()
+            .id("workspace-sidebar")
+            .test_support()
             .size_full()
-            .bg(cx.theme().sidebar)
             .text_color(cx.theme().sidebar_foreground)
-            .child(div().flex_1().min_h_0().child(list))
+            .child(div().flex_1().min_h_0().child(self.tabs.clone()))
             .child(
-                // Pinned under the list, where desktop apps keep settings.
                 h_flex()
+                    .flex_shrink_0()
                     .p_2()
-                    .border_t_1()
-                    .border_color(cx.theme().sidebar_border)
+                    .gap_2()
                     .child(
                         Button::new("open-settings")
                             .ghost()
                             .small()
-                            .icon(Icon::new(CatalogIcon::Settings))
-                            .label(t!("workspace.sidebar.settings"))
+                            .icon(CatalogIcon::Settings)
                             .tooltip_with_action(
                                 t!("workspace.sidebar.open_settings"),
                                 &OpenSettings,
                                 None,
                             )
-                            .on_click(|_, window, cx| {
-                                window.dispatch_action(Box::new(OpenSettings), cx)
+                            .accessibility_label(t!("workspace.sidebar.open_settings"))
+                            .on_click(move |_, window, cx| {
+                                settings.dispatch_action(&OpenSettings, window, cx)
+                            }),
+                    )
+                    .child(
+                        Button::new("show-hosts")
+                            .ghost()
+                            .small()
+                            .icon(CatalogIcon::Server)
+                            .tooltip_with_action(t!("app.shortcut.show_hosts"), &ShowHosts, None)
+                            .accessibility_label(t!("app.shortcut.show_hosts"))
+                            .on_click(move |_, window, cx| {
+                                hosts.dispatch_action(&ShowHosts, window, cx)
                             }),
                     ),
             )

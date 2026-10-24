@@ -16,8 +16,7 @@ use gpui_kit::*;
 
 use super::{EditorId, EditorKey, cursor_label, format_label, indentation, language_for};
 use crate::app::{
-    CatalogIcon, CenterTab, CloseEditor, EDITOR_CONTEXT, EditorAction, EditorCommand,
-    EditorShortcut,
+    CatalogIcon, CenterTab, EDITOR_CONTEXT, EditorAction, EditorCommand, EditorShortcut,
 };
 use crate::explorer::{ExplorerId, ExplorerPanel, FileLocation};
 use crate::host::{Host, HostId};
@@ -26,7 +25,7 @@ use crate::sftp::{
     FileStamp, ReadFailure, SaveFailure, SharedLocalDirectoryProvider, TextFile, TextFormat,
     read_local_text, write_local_text,
 };
-use crate::shared::{ClosableTabTitle, HostMark, close_tab_items, confirm_danger, soft_tag};
+use crate::shared::{ClosableTabTitle, close_tab_items, confirm_danger, soft_tag};
 
 /// Where an editor reads and writes its file. A remote file goes through
 /// the SFTP tab that opened it, over that tab's connection; a local one
@@ -488,18 +487,13 @@ impl EditorPanel {
         let id = self.id;
         let path: SharedString = self.display_path().into();
         let leading = match &self.source {
-            EditorSource::Remote { host, .. } => HostMark::new(
-                ("editor-host", id.0),
-                host.name.clone(),
-                host.address.clone(),
-                host.os,
-            )
-            .small()
-            .into_any_element(),
-            EditorSource::Local { .. } => Icon::new(CatalogIcon::Laptop)
-                .small()
-                .text_color(cx.theme().muted_foreground)
-                .into_any_element(),
+            EditorSource::Remote { .. } => None,
+            EditorSource::Local { .. } => Some(
+                Icon::new(CatalogIcon::Laptop)
+                    .small()
+                    .text_color(cx.theme().muted_foreground)
+                    .into_any_element(),
+            ),
         };
         let state = match self.phase {
             Phase::Saving => Some((t!("editor.state.saving"), cx.theme().muted_foreground)),
@@ -521,7 +515,7 @@ impl EditorPanel {
             .py_1()
             .border_b_1()
             .border_color(cx.theme().border)
-            .child(leading)
+            .children(leading)
             .child(
                 div()
                     .id(("editor-path", id.0))
@@ -636,7 +630,6 @@ impl Panel for EditorPanel {
             self.name(),
         )
         .modified(self.dirty)
-        .closable(("close-editor", id.0), Box::new(CloseEditor(id)))
         .context_menu(move |menu, _, cx| tab_menu(menu, id, group.clone(), panel, cx))
     }
 

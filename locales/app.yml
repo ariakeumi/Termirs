@@ -2,9 +2,15 @@ _version: 2
 
 app.database_unavailable:
   zh-CN: 无法打开本地数据库，本次运行的改动不会被保存：%{error}
-  en: "Couldn’t open the local database, so changes last only until ShellRS quits: %{error}"
+  en: "Couldn’t open the local database, so changes last only until Termirs quits: %{error}"
 
 # 设置 › 键盘快捷键: each shortcut by its id, in the order the page lists them.
+app.shortcut.quick_open:
+  zh-CN: 快速打开
+  en: Quick open
+app.shortcut.show_hosts:
+  zh-CN: 打开主机管理
+  en: Open host manager
 app.shortcut.new_host:
   zh-CN: 新建主机
   en: New host
@@ -20,6 +26,9 @@ app.shortcut.toggle_sidebar:
 app.shortcut.toggle_tool_sidebar:
   zh-CN: 显示或隐藏右侧栏
   en: Show or hide right sidebar
+app.shortcut.toggle_sftp_sidebar:
+  zh-CN: 展开或收起 SFTP 文件面板
+  en: Toggle SFTP file sidebar
 app.shortcut.maximize_window:
   zh-CN: 最大化窗口
   en: Maximize window
@@ -27,8 +36,8 @@ app.shortcut.restore_window:
   zh-CN: 还原窗口
   en: Restore window
 app.shortcut.show_hide_app:
-  zh-CN: 显示或隐藏 ShellRS（全局）
-  en: Show or hide ShellRS (system-wide)
+  zh-CN: 显示或隐藏 Termirs（全局）
+  en: Show or hide Termirs (system-wide)
 app.shortcut.focus_search:
   zh-CN: 聚焦搜索
   en: Focus search
@@ -47,6 +56,9 @@ app.shortcut.quit:
 app.shortcut.new_local_terminal:
   zh-CN: 新建本地终端
   en: New local terminal
+app.shortcut.open_sftp:
+  zh-CN: 打开双栏 SFTP
+  en: Open dual-pane SFTP
 app.shortcut.close_tab:
   zh-CN: 关闭标签
   en: Close tab

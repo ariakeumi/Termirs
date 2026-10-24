@@ -14,6 +14,8 @@ pub enum FakeBehavior {
     Prints(&'static str),
     /// A local shell in this folder, as this computer tells.
     InFolder(&'static str),
+    /// Reports the first folder on start, then the next after each Enter.
+    VisitsFolders(&'static [&'static str]),
     /// Answers what `exec --terminal` types the way a shell whose program
     /// is `exe` would: the probe, then the command line, which prints
     /// `ran` and ends with 0 when `ends`, and runs on otherwise.
@@ -198,6 +200,13 @@ impl TerminalTransport for FakeTerminalTransport {
         if let FakeBehavior::InFolder(folder) = self.behavior {
             events.send_blocking(TerminalTransportEvent::WorkingDirectory(folder.into()))?;
         }
+        let mut folders = match self.behavior {
+            FakeBehavior::VisitsFolders(folders) => folders.iter(),
+            _ => [].iter(),
+        };
+        if let Some(folder) = folders.next() {
+            events.send_blocking(TerminalTransportEvent::WorkingDirectory((*folder).into()))?;
+        }
         events.send_blocking(TerminalTransportEvent::Output(
             format!(
                 "\x1b]0;测试终端 {}\x07run:{}$ alpha.txt 会议纪要.md\r\n",
@@ -225,6 +234,13 @@ impl TerminalTransport for FakeTerminalTransport {
                         .unwrap_or_else(|error| error.into_inner())
                         .push(bytes.clone());
                     let mut answer = shell_answer(self.behavior, &bytes);
+                    if bytes.contains(&b'\r')
+                        && let Some(folder) = folders.next()
+                    {
+                        events.send_blocking(TerminalTransportEvent::WorkingDirectory(
+                            (*folder).into(),
+                        ))?;
+                    }
                     if matches!(self.behavior, FakeBehavior::Rz) {
                         line.extend_from_slice(&bytes);
                         if line.ends_with(b"\r") {
@@ -382,6 +398,7 @@ pub fn open_workspace_with_protocols(
             Workspace::new_with_services(
                 store,
                 cx.new(|_| settings_store()),
+                None,
                 remote,
                 telnet.clone(),
                 serial.clone(),

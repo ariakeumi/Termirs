@@ -23,14 +23,14 @@ out=$5
 base="https://dl.shellrs.com/releases/$version"
 mirror=${SHELLRS_MIRROR_BASE:-}
 
-mac_arm="ShellRS-$version-macos-aarch64.app.zip"
-mac_intel="ShellRS-$version-macos-x86_64.app.zip"
-dmg_arm="ShellRS-$version-macos-aarch64.dmg"
-dmg_intel="ShellRS-$version-macos-x86_64.dmg"
-win="ShellRS-$version-windows-x86_64-setup.exe"
+mac_arm="Termirs-$version-macos-aarch64.app.zip"
+mac_intel="Termirs-$version-macos-x86_64.app.zip"
+dmg_arm="Termirs-$version-macos-aarch64.dmg"
+dmg_intel="Termirs-$version-macos-x86_64.dmg"
+win="Termirs-$version-windows-x86_64-setup.exe"
 # A portable copy updates from the same zip a person downloads.
-win_portable="ShellRS-$version-windows-x86_64-portable.zip"
-linux="ShellRS-$version-linux-x86_64.AppImage"
+win_portable="Termirs-$version-windows-x86_64-portable.zip"
+linux="Termirs-$version-linux-x86_64.AppImage"
 
 sha256() {
     if command -v sha256sum >/dev/null; then

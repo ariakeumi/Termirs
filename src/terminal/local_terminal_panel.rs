@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::path::PathBuf;
 use std::sync::LazyLock;
 
 use gpui_kit::component::{
@@ -13,7 +14,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use regex::Regex;
 
-use crate::app::{CatalogIcon, CenterTab, CloseLocalTerminal, RestartLocalTerminal};
+use crate::app::{CatalogIcon, CenterTab, RestartLocalTerminal};
 use crate::i18n::t;
 use crate::shared::{ClosableTabTitle, close_tab_items};
 
@@ -36,10 +37,8 @@ pub enum LocalTerminalPanelEvent {
     WorkingDirectory(LocalTerminalId, std::path::PathBuf),
 }
 
-/// What 项目 calls one of its terminals. Its tab shows the name until the
-/// shell or a program titles it, as a terminal app's tab does, or the
-/// `title` it had last time until then; a name `fixed` by hand shows over
-/// any title.
+/// What 项目 calls one of its terminals. Its row shows the shell's title,
+/// or its last saved title, unless a name was fixed by hand.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SavedName {
     pub name: SharedString,
@@ -52,6 +51,8 @@ pub struct LocalTerminalPanel {
     id: LocalTerminalId,
     /// Its name in 项目, for a terminal kept there.
     name: Option<SavedName>,
+    tab_name: SharedString,
+    directory: Option<PathBuf>,
     terminal: Entity<TerminalView>,
     tab_group: Option<WeakEntity<TabGroup>>,
     broadcast: Option<super::BroadcastSelection>,
@@ -63,6 +64,7 @@ impl LocalTerminalPanel {
         id: LocalTerminalId,
         factory: SharedTerminalTransportFactory,
         name: Option<SavedName>,
+        tab_name: SharedString,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -83,7 +85,7 @@ impl LocalTerminalPanel {
             }),
             cx.subscribe(
                 &terminal,
-                move |_, _, event: &TerminalEvent, cx| match event {
+                move |this, _, event: &TerminalEvent, cx| match event {
                     TerminalEvent::Input(input) => {
                         cx.emit(LocalTerminalPanelEvent::Input(id, input.clone()));
                     }
@@ -94,6 +96,10 @@ impl LocalTerminalPanel {
                         cx.emit(LocalTerminalPanelEvent::ZmodemAsk(id, *direction));
                     }
                     TerminalEvent::WorkingDirectory(folder) => {
+                        if this.directory.as_ref() != Some(folder) {
+                            this.directory = Some(folder.clone());
+                            cx.notify();
+                        }
                         cx.emit(LocalTerminalPanelEvent::WorkingDirectory(
                             id,
                             folder.clone(),
@@ -107,6 +113,8 @@ impl LocalTerminalPanel {
         Self {
             id,
             name,
+            tab_name,
+            directory: None,
             terminal,
             tab_group: None,
             broadcast: None,
@@ -161,6 +169,8 @@ impl LocalTerminalPanel {
         self.terminal.update(cx, |terminal, cx| {
             terminal.restart_with_factory(factory, cx)
         });
+        self.directory = None;
+        cx.notify();
         let focus = self.terminal.read(cx).focus_handle();
         window.focus(&focus, cx);
     }
@@ -174,7 +184,7 @@ impl LocalTerminalPanel {
     }
 
     /// The title its shell or a program gives it, short: `None` before one
-    /// does. 项目 shows it for a terminal's name, as the tab does.
+    /// does. 项目 shows it for a terminal's name.
     pub fn shell_title(&self, cx: &App) -> Option<SharedString> {
         let title = self.terminal.read(cx).title(cx)?;
         Some(
@@ -184,13 +194,35 @@ impl LocalTerminalPanel {
         )
     }
 
-    pub(crate) fn display_title(&self, cx: &App) -> SharedString {
-        if let Some(name) = self.name.as_ref().filter(|name| name.fixed) {
-            return name.name.clone();
+    pub fn set_tab_name(&mut self, name: SharedString, cx: &mut Context<Self>) {
+        if self.tab_name != name {
+            self.tab_name = name;
+            cx.notify();
         }
-        self.shell_title(cx)
-            .or_else(|| self.name.as_ref().and_then(|name| name.title.clone()))
-            .unwrap_or_else(|| self.default_title())
+    }
+
+    pub(crate) fn display_title(&self, _: &App) -> SharedString {
+        let name: SharedString = match self.tab_name.trim() {
+            "" => t!("terminal.local.tab_title"),
+            name => name.to_owned().into(),
+        };
+        let Some(directory) = self
+            .directory
+            .as_ref()
+            .filter(|path| !path.as_os_str().is_empty())
+        else {
+            return name;
+        };
+        // A filesystem root has no file name; retain its root spelling.
+        let directory = directory
+            .file_name()
+            .unwrap_or(directory.as_os_str())
+            .to_string_lossy();
+        t!(
+            "terminal.local.tab_title_directory",
+            name = name.as_ref(),
+            directory = directory.as_ref()
+        )
     }
 }
 
@@ -238,22 +270,17 @@ impl BasePanel for LocalTerminalPanel {
 impl Panel for LocalTerminalPanel {
     fn title(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let (id, group, panel) = (self.id, self.tab_group.clone(), cx.entity_id());
-        let mark = super::BroadcastSelection::lead(
+        let checkbox = super::BroadcastSelection::checkbox(
             self.broadcast.clone(),
             CenterTab::LocalTerminal(id),
             self.display_title(cx),
-            Icon::new(CatalogIcon::Terminal).small(),
         );
-        ClosableTabTitle::new(
-            ("local-terminal-tab", self.id.0),
-            mark,
-            self.display_title(cx),
-        )
-        .closable(
-            ("close-local-terminal", self.id.0),
-            Box::new(CloseLocalTerminal(self.id)),
-        )
-        .context_menu(move |menu, _, cx| tab_menu(menu, id, group.clone(), panel, cx))
+        let mut title =
+            ClosableTabTitle::text(("local-terminal-tab", self.id.0), self.display_title(cx));
+        if let Some(checkbox) = checkbox {
+            title = title.with_leading(checkbox);
+        }
+        title.context_menu(move |menu, _, cx| tab_menu(menu, id, group.clone(), panel, cx))
     }
 
     fn toolbar_buttons(&mut self, _: &mut Window, _: &mut Context<Self>) -> Option<Vec<Button>> {

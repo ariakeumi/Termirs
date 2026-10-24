@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/logo/shellrs.svg" width="96" alt="ShellRS">
+  <img src="assets/logo/shellrs.png" width="96" alt="Termirs">
 </p>
 
-<h1 align="center">ShellRS</h1>
+<h1 align="center">Termirs</h1>
 
 <p align="center">
   用 Rust 编写、由 GPU 渲染界面的高性能原生跨平台 SSH 客户端：Xshell 式的主机管理、WinSCP 式 SFTP 和端口转发，都在一个窗口里。
@@ -20,14 +20,14 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/main-dark.png">
-  <img src="docs/screenshots/main-light.png" alt="ShellRS 主界面：左侧是分组的主机树，右侧远程终端里运行着 htop，标签栏显示连接延迟">
+  <img src="docs/screenshots/main-light.png" alt="Termirs 主界面：左侧是分组的主机树，右侧远程终端里运行着 htop，标签栏显示连接延迟">
 </picture>
 
 ## 简介
 
-ShellRS 把 Xshell 式的主机管理和多标签终端、WinSCP 式的双栏 SFTP 文件管理、SSH 端口转发放进同一个跨平台应用，JumpServer 等堡垒机也可以像调用 Xshell、WinSCP 一样调用它。它用 Rust 编写，界面基于 Zed 编辑器的 GPU 加速 UI 框架 GPUI（通过 [gpui-kit](https://gpui-kit.com)），不依赖 Electron 或 JVM。
+Termirs 把 Xshell 式的主机管理和多标签终端、WinSCP 式的双栏 SFTP 文件管理、SSH 端口转发放进同一个跨平台应用，JumpServer 等堡垒机也可以像调用 Xshell、WinSCP 一样调用它。它用 Rust 编写，界面基于 Zed 编辑器的 GPU 加速 UI 框架 GPUI（通过 [gpui-kit](https://gpui-kit.com)），不依赖 Electron 或 JVM。
 
-主机、分组、凭据和转发规则保存在本地的 SQLite 数据库里。密码和私钥口令只存进系统钥匙串（macOS 钥匙串、Windows 凭据管理器、Linux Secret Service），数据库里没有任何秘密。ShellRS 还带一个 `shellrs` 命令，让 Claude Code、Codex 等 AI Agent 用你保存的主机执行命令、传输文件，不用把密码交给它们。
+主机、分组、凭据和转发规则保存在本地的 SQLite 数据库里。密码和私钥口令只存进系统钥匙串（macOS 钥匙串、Windows 凭据管理器、Linux Secret Service），数据库里没有任何秘密。Termirs 还带一个 `shellrs` 命令，让 Claude Code、Codex 等 AI Agent 用你保存的主机执行命令、传输文件，不用把密码交给它们。
 
 ## 功能
 
@@ -71,15 +71,15 @@ ShellRS 把 Xshell 式的主机管理和多标签终端、WinSCP 式的双栏 SF
 
 **从堡垒机打开**
 
-- 兼容 Xshell 和 WinSCP 的命令行调用方式：在 JumpServer 等堡垒机的客户端里把 ShellRS 设成 SSH / SFTP 客户端，`ssh://` 链接打开终端，`sftp://` 链接打开 SFTP。
-- 认得 Xshell 的 `-url`、`-newtab` 和 WinSCP 的 `/sessionname=`；ShellRS 已在运行时，链接交给正在运行的那个打开。
+- 兼容 Xshell 和 WinSCP 的命令行调用方式：在 JumpServer 等堡垒机的客户端里把 Termirs 设成 SSH / SFTP 客户端，`ssh://` 链接打开终端，`sftp://` 链接打开 SFTP。
+- 认得 Xshell 的 `-url`、`-newtab` 和 WinSCP 的 `/sessionname=`；Termirs 已在运行时，链接交给正在运行的那个打开。
 - 打开的是不保存的外部连接：不进主机列表，链接里的密码只留在内存里，标签关掉就没了。每条连接只用一个通道，不允许多开通道的堡垒机也能用。详见[使用手册](docs/manual.zh.md#从堡垒机打开外部连接)。
 
 **端口转发**
 
 - 本地（`-L`）、远程（`-R`）和动态（`-D`，SOCKS5 / SOCKS4）转发。
 - 配置对话框里有实时示意图和一句话说明，看得出连接从哪进、到哪去。
-- 每条规则自己建立 SSH 连接，断线后自动重连三次；可以设为随 ShellRS 启动自动开启。
+- 每条规则自己建立 SSH 连接，断线后自动重连三次；可以设为随 Termirs 启动自动开启。
 
 **凭据**
 
@@ -88,12 +88,12 @@ ShellRS 把 Xshell 式的主机管理和多标签终端、WinSCP 式的双栏 SF
 
 **给 AI Agent 用的 CLI**
 
-- `shellrs hosts` / `credentials` / `exec` / `upload` / `download` / `sync`：管理主机和凭据、执行命令、传输和同步文件。由正在运行的 ShellRS 代为登录，命令本身不读密码和私钥。
+- `shellrs hosts` / `credentials` / `exec` / `upload` / `download` / `sync`：管理主机和凭据、执行命令、传输和同步文件。由正在运行的 Termirs 代为登录，命令本身不读密码和私钥。
 - 在设置页一键把 `shellrs` 放进 PATH，并为 Claude Code、Codex、OpenCode、WorkBuddy 安装 Agent Skill。
 
 **安全与更新**
 
-- 秘密只进系统钥匙串；主机信任记录存在 ShellRS 自己的 `known_hosts` 里，不改动 `~/.ssh`。
+- 秘密只进系统钥匙串；主机信任记录存在 Termirs 自己的 `known_hosts` 里，不改动 `~/.ssh`。
 - 在线升级：更新清单经 minisign 签名，安装包按 SHA-256 校验；后台下载，重启或退出时安装。分稳定版和 Beta 两个渠道，检查更新只发送版本号、系统和 CPU 架构。
 - 匿名使用统计：经 Aptabase 只发送版本、系统、CPU 架构和各功能的使用次数，不含主机、凭据、命令或任何标识，可在「设置 › 关于」关闭。详见[使用手册](docs/manual.zh.md#隐私)。
 
@@ -125,23 +125,23 @@ ShellRS 把 Xshell 式的主机管理和多标签终端、WinSCP 式的双栏 SF
 
 | 系统 | 安装包 | 说明 |
 | --- | --- | --- |
-| macOS 11+（Apple Silicon） | `ShellRS-<版本>-macos-aarch64.dmg` | 已签名并经过 Apple 公证。打开 DMG，把 ShellRS 拖进「应用程序」 |
-| macOS 11+（Intel） | `ShellRS-<版本>-macos-x86_64.dmg` | 已签名并经过 Apple 公证。打开 DMG，把 ShellRS 拖进「应用程序」 |
-| Windows x64 | `ShellRS-<版本>-windows-x86_64-setup.exe` | 按当前用户安装，不需要管理员权限。安装程序暂未签名，SmartScreen 拦下时点「更多信息 › 仍要运行」 |
-| Windows x64（便携版） | `ShellRS-<版本>-windows-x86_64-portable.zip` | 解压到自己能写入的文件夹，运行 `shellrs.exe`，数据都在旁边的 `data` 文件夹里。见[Windows 便携版](docs/manual.zh.md#windows-便携版) |
-| Linux x64 | `ShellRS-<版本>-linux-x86_64.AppImage` | `chmod +x` 后直接运行，需要 glibc 2.31 以上（Ubuntu 20.04、Debian 11 及更新的版本） |
+| macOS 11+（Apple Silicon） | `Termirs-<版本>-macos-aarch64.dmg` | 已签名并经过 Apple 公证。打开 DMG，把 Termirs 拖进「应用程序」 |
+| macOS 11+（Intel） | `Termirs-<版本>-macos-x86_64.dmg` | 已签名并经过 Apple 公证。打开 DMG，把 Termirs 拖进「应用程序」 |
+| Windows x64 | `Termirs-<版本>-windows-x86_64-setup.exe` | 按当前用户安装，不需要管理员权限。安装程序暂未签名，SmartScreen 拦下时点「更多信息 › 仍要运行」 |
+| Windows x64（便携版） | `Termirs-<版本>-windows-x86_64-portable.zip` | 解压到自己能写入的文件夹，运行 `shellrs.exe`，数据都在旁边的 `data` 文件夹里。见[Windows 便携版](docs/manual.zh.md#windows-便携版) |
+| Linux x64 | `Termirs-<版本>-linux-x86_64.AppImage` | `chmod +x` 后直接运行，需要 glibc 2.31 以上（Ubuntu 20.04、Debian 11 及更新的版本） |
 
 每个安装包都附带 minisign 签名（`.minisig`），另有一份 `SHA256SUMS`。
 
-装好之后不用再手动下载：ShellRS 会在后台检查、下载并校验新版本，标题栏右上角出现提示后点「重启并安装」；不点的话，退出时也会自动装好。直接在 DMG 里运行、没放进「应用程序」文件夹、在 Linux 上不是用 AppImage 运行，或者 Windows 便携版所在的文件夹不能写入时，无法自动更新。
+装好之后不用再手动下载：Termirs 会在后台检查、下载并校验新版本，标题栏右上角出现提示后点「重启并安装」；不点的话，退出时也会自动装好。直接在 DMG 里运行、没放进「应用程序」文件夹、在 Linux 上不是用 AppImage 运行，或者 Windows 便携版所在的文件夹不能写入时，无法自动更新。
 
 ## 快速上手
 
 1. 点标题栏的「新建主机…」（⌘N，Windows / Linux 上 Ctrl+N），填写地址、端口和认证方式，密码会存进系统钥匙串。
 2. 双击主机打开终端。第一次连接时会请你确认主机密钥。
 3. 右键主机选「打开 SFTP」，或点终端标签栏右侧的「SFTP」，在两栏之间拖动文件即可上传、下载。
-4. 标题栏「ShellRS」后面的三个图标切换侧栏：主机、端口转发、凭据。
-5. ⌘T（Ctrl+T）打开本地终端。把标签拖到中间区域的上、下、左、右边缘，就能分栏。
+4. 标题栏「Termirs」后面的三个图标切换侧栏：主机、端口转发、凭据。
+5. ⌘L（Ctrl+T）打开本地终端。把标签拖到中间区域的上、下、左、右边缘，就能分栏。
 
 ## 给 AI Agent 用
 
@@ -155,7 +155,7 @@ shellrs download <ID> /var/log/syslog ./logs/      # 下载
 shellrs sync <ID> ./dist /opt/app --delete         # 同步目录，没变的文件跳过
 ```
 
-命令把请求交给正在运行的 ShellRS，由它用保存的配置和钥匙串登录。遇到陌生主机或缺少密码时，命令直接失败、返回稳定的错误码，不会弹框卡住 Agent。详见[使用手册](docs/manual.zh.md#外部-cli)。
+命令把请求交给正在运行的 Termirs，由它用保存的配置和钥匙串登录。遇到陌生主机或缺少密码时，命令直接失败、返回稳定的错误码，不会弹框卡住 Agent。详见[使用手册](docs/manual.zh.md#外部-cli)。
 
 ## 从源码构建
 
@@ -208,4 +208,4 @@ cargo test
 
 ## 许可证
 
-ShellRS 以 [GNU 通用公共许可证第 3 版（GPL-3.0）](LICENSE)发布。你可以自由使用、修改和再分发，包括用于商业用途；但分发修改后的版本时，必须同样以 GPL-3.0 公开完整的源代码。
+Termirs 以 [GNU 通用公共许可证第 3 版（GPL-3.0）](LICENSE)发布。你可以自由使用、修改和再分发，包括用于商业用途；但分发修改后的版本时，必须同样以 GPL-3.0 公开完整的源代码。

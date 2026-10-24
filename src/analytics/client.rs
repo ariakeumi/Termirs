@@ -333,7 +333,7 @@ mod tests {
         let server = Server::start(Some(200));
         let delivery = server
             .transport()
-            .send(b"[]", "ShellRS/1 (macOS 15; aarch64)");
+            .send(b"[]", "Termirs/1 (macOS 15; aarch64)");
         assert_eq!(delivery, Delivery::Sent);
         let seen = server.seen();
         let request = &seen[0];
@@ -342,7 +342,7 @@ mod tests {
         assert_eq!(request.header("content-type"), Some("application/json"));
         assert_eq!(
             request.header("user-agent"),
-            Some("ShellRS/1 (macOS 15; aarch64)")
+            Some("Termirs/1 (macOS 15; aarch64)")
         );
         assert_eq!(request.body, b"[]");
     }

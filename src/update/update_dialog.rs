@@ -1,4 +1,4 @@
-//! The update dialog: how far the newer ShellRS's download is, and
+//! The update dialog: how far the newer Termirs's download is, and
 //! restarting into it. What it changes is not listed here: a button opens
 //! the website's changelog.
 //!
@@ -170,7 +170,7 @@ pub fn open_update_dialog(
     window.open_dialog(cx, move |dialog, window, cx| {
         let snapshot = updater.read(cx).snapshot();
         let title = match snapshot.offered_version() {
-            Some(version) => SharedString::from(format!("ShellRS {version}")),
+            Some(version) => SharedString::from(format!("Termirs {version}")),
             None => t!("update.dialog.title"),
         };
         dialog

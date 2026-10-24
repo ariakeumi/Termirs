@@ -15,9 +15,8 @@ use gpui_kit::*;
 use crate::app::{
     CatalogIcon, ConnectHost, ConnectSelected, NewHost, QuickConnect, RECENT_HOSTS_CONTEXT,
 };
-use crate::host::{HostId, HostOs, HostStore, ProtocolKind, host_menu};
+use crate::host::{HostId, HostStore, host_menu};
 use crate::i18n::t;
-use crate::shared::HostMark;
 
 /// The center's empty state: shown in place of the tabs while none is open.
 ///
@@ -44,10 +43,6 @@ struct RecentRow {
     name: SharedString,
     address: String,
     group: Option<SharedString>,
-    os: Option<HostOs>,
-    protocol: ProtocolKind,
-    /// The host's own address, which colours a mark without a brand.
-    host_address: SharedString,
 }
 
 impl RecentHosts {
@@ -84,9 +79,6 @@ impl RecentHosts {
                 group: host
                     .group
                     .map(|id| SharedString::from(store.group_path(id))),
-                os: host.os,
-                protocol: host.kind(),
-                host_address: host.address.clone(),
             })
             .collect()
     }
@@ -122,6 +114,7 @@ impl RecentHosts {
                             .small()
                             .icon(IconName::Search)
                             .label(t!("workspace.recent.find_host"))
+                            .tooltip_with_action(t!("app.shortcut.quick_open"), &QuickConnect, None)
                             .on_click({
                                 let target = target.clone();
                                 move |_, window, cx| {
@@ -198,37 +191,26 @@ impl RecentHosts {
                 item.bg(crate::app::selected_row_color(cx.theme()))
             })
             .child(
-                h_flex()
-                    .gap_3()
-                    .child(
-                        HostMark::new(
-                            ("recent-host-os", id.0),
-                            row.name.clone(),
-                            row.host_address.clone(),
-                            row.os,
+                h_flex().gap_3().child(
+                    v_flex()
+                        .min_w_0()
+                        .gap_0p5()
+                        .child(
+                            h_flex()
+                                .gap_2()
+                                .child(div().font_weight(FontWeight::MEDIUM).child(row.name))
+                                .when_some(row.group, |row, group| {
+                                    row.child(div().text_xs().text_color(muted).child(group))
+                                }),
                         )
-                        .protocol(row.protocol),
-                    )
-                    .child(
-                        v_flex()
-                            .min_w_0()
-                            .gap_0p5()
-                            .child(
-                                h_flex()
-                                    .gap_2()
-                                    .child(div().font_weight(FontWeight::MEDIUM).child(row.name))
-                                    .when_some(row.group, |row, group| {
-                                        row.child(div().text_xs().text_color(muted).child(group))
-                                    }),
-                            )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(muted)
-                                    .truncate()
-                                    .child(row.address),
-                            ),
-                    ),
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(muted)
+                                .truncate()
+                                .child(row.address),
+                        ),
+                ),
             )
             // A right click selects the row, as in Finder and Explorer, so
             // the menu visibly belongs to it.

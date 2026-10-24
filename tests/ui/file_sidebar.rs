@@ -44,6 +44,7 @@ fn open_with(
             Workspace::new_with_services(
                 cx.new(|_| HostStore::seed()),
                 cx.new(|_| settings_store()),
+                None,
                 Arc::new(FixedRemoteTerminalTransportProvider::new(terminals.clone())),
                 fake_telnet_terminals(),
                 fake_serial_terminals(),
@@ -70,6 +71,13 @@ fn open_with(
 
 /// Bring a terminal forward and open 文件 beside it.
 async fn show_files(cx: &mut TestAppContext, fixture: &Fixture, terminal: u64, explorer: u64) {
+    // These tests open a channel on an established connection. Settle the
+    // initial Started event before creating its sidebar, just as on reconnect.
+    cx.wait_for(fixture.handle.into(), Duration::from_secs(2), |_, cx| {
+        remote_lifecycle(&fixture.workspace, RemoteTerminalId(terminal), cx)
+            == TerminalLifecycle::Running
+    })
+    .await;
     in_frame(cx, fixture.handle, |window, cx| {
         window.activate_window();
         window.click(("terminal-tab", terminal), cx);
@@ -79,7 +87,7 @@ async fn show_files(cx: &mut TestAppContext, fixture: &Fixture, terminal: u64, e
             .try_find(("remote-pane", explorer))
             .is_none_or(|pane| !pane.visible())
         {
-            window.click("tool-files", cx);
+            toggle_tool(window, "tool-files", cx);
         }
     });
     wait_for_path(cx, fixture.handle, explorer, "/home/tester").await;
@@ -169,14 +177,83 @@ async fn files_open_on_the_terminals_own_connection(cx: &mut TestAppContext) {
 
     // Hidden and shown again, it is the same one.
     in_frame(cx, fixture.handle, |window, cx| {
-        window.click("tool-files", cx)
+        toggle_tool(window, "tool-files", cx)
     });
     in_frame(cx, fixture.handle, |window, cx| {
-        window.click("tool-files", cx)
+        toggle_tool(window, "tool-files", cx)
     });
     wait_for_path(cx, fixture.handle, FILES, "/home/tester").await;
     assert_eq!(*fixture.sftp.on_terminal.lock().unwrap(), 1);
     assert_eq!(fixture.terminals.sftp_opens(), [1]);
+}
+
+#[gpui_kit::test]
+async fn sftp_shortcut_expands_the_window_and_keeps_the_terminal_width(cx: &mut TestAppContext) {
+    let fixture = open(cx, FakeSftpProvider::default());
+    cx.wait_for(fixture.handle.into(), Duration::from_secs(2), |_, cx| {
+        remote_lifecycle(
+            &fixture.workspace,
+            RemoteTerminalId(INITIAL_WEB_TERMINAL),
+            cx,
+        ) == TerminalLifecycle::Running
+    })
+    .await;
+    in_frame(cx, fixture.handle, |window, cx| {
+        window.activate_window();
+        window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx);
+    });
+    let (original, terminal) = in_frame(cx, fixture.handle, |window, _| {
+        (
+            window.window_bounds().get_bounds(),
+            window.find(("terminal", INITIAL_WEB_TERMINAL)).bounds(),
+        )
+    });
+    let keys = if cfg!(target_os = "macos") {
+        "cmd-p"
+    } else {
+        "ctrl-shift-p"
+    };
+    for _ in 0..2 {
+        in_frame(cx, fixture.handle, |window, cx| window.press(keys, cx));
+        wait_for_path(cx, fixture.handle, FILES, "/home/tester").await;
+        let expanded = in_frame(cx, fixture.handle, |window, _| {
+            window.window_bounds().get_bounds()
+        });
+        assert_eq!(expanded.origin, original.origin);
+        assert!(expanded.size.width > original.size.width);
+        assert_eq!(expanded.size.height, original.size.height);
+        // The headless platform records resize requests but needs the OS's
+        // resize event simulated before laying out the new viewport.
+        cx.simulate_window_resize(fixture.handle.into(), expanded.size);
+        in_frame(cx, fixture.handle, |window, cx| {
+            let now = window.find(("terminal", INITIAL_WEB_TERMINAL)).bounds();
+            assert_eq!(now.left(), terminal.left());
+            assert_eq!(now.size.width, terminal.size.width);
+            let files = window.find(("remote-pane", FILES)).bounds();
+            assert!(files.left() >= now.right());
+            window
+                .within(("remote-pane", FILES))
+                .click("remote-path", cx);
+            window.press(keys, cx);
+        });
+        let restored = in_frame(cx, fixture.handle, |window, _| {
+            window.window_bounds().get_bounds()
+        });
+        assert_eq!(restored, original);
+        cx.simulate_window_resize(fixture.handle.into(), restored.size);
+        in_frame(cx, fixture.handle, |window, _| {
+            assert!(
+                window
+                    .try_find(("remote-pane", FILES))
+                    .is_none_or(|pane| !pane.visible())
+            );
+            assert_eq!(
+                window.find(("terminal", INITIAL_WEB_TERMINAL)).bounds(),
+                terminal
+            );
+        });
+    }
+    assert_eq!(*fixture.sftp.on_terminal.lock().unwrap(), 1);
 }
 
 #[gpui_kit::test]
@@ -495,10 +572,10 @@ async fn files_asks_once_per_connection_to_set_up_folder_reporting(cx: &mut Test
 
     // Not again on this connection, shown again or not.
     in_frame(cx, fixture.handle, |window, cx| {
-        window.click("tool-files", cx)
+        toggle_tool(window, "tool-files", cx)
     });
     in_frame(cx, fixture.handle, |window, cx| {
-        window.click("tool-files", cx)
+        toggle_tool(window, "tool-files", cx)
     });
     settle(cx);
     in_frame(cx, fixture.handle, |window, _| {
@@ -628,7 +705,7 @@ async fn files_opens_where_the_terminal_is(cx: &mut TestAppContext) {
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx);
     });
     in_frame(cx, fixture.handle, |window, cx| {
-        window.click("tool-files", cx)
+        toggle_tool(window, "tool-files", cx)
     });
     wait_for_path(cx, fixture.handle, FILES, "/srv/app").await;
 }

@@ -26,7 +26,9 @@ fn open_history(cx: &mut TestAppContext, factory: Arc<FakeTerminalFactory>) -> W
         window.activate_window();
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, cx| window.click("tool-history", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-history", cx)
+    });
     handle
 }
 
@@ -102,7 +104,9 @@ async fn the_history_is_read_when_shown_and_on_refresh_only(cx: &mut TestAppCont
     .await;
 
     // Another tool: nothing runs.
-    in_frame(cx, handle, |window, cx| window.click("tool-snippets", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-snippets", cx)
+    });
     cx.executor().advance_clock(Duration::from_secs(60));
     cx.run_until_parked();
     assert_eq!(factory.exec_count(), 2);
@@ -197,8 +201,8 @@ fn the_history_is_not_offered_on_windows(cx: &mut TestAppContext) {
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, _| {
-        assert!(window.try_find("tool-history").is_none());
-        assert!(window.find("tool-snippets").visible());
+    in_frame(cx, handle, |window, cx| {
+        assert!(!tool_offered(window, "tool-history", cx));
+        assert!(tool_offered(window, "tool-snippets", cx));
     });
 }

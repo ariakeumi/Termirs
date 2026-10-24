@@ -156,6 +156,7 @@ pub fn open_sized_workspace_with_forwards(
             Workspace::new_with_services(
                 store,
                 cx.new(|_| settings_store()),
+                None,
                 remote,
                 fake_telnet_terminals(),
                 fake_serial_terminals(),
@@ -175,10 +176,17 @@ pub fn open_sized_workspace_with_forwards(
 }
 
 /// Show the forward list and wait for it to be up.
-pub async fn show_forwards(cx: &mut TestAppContext, handle: WindowHandle<Root>) {
-    in_frame(cx, handle, |window, cx| window.click("show-forwards", cx));
+pub async fn show_forwards(
+    cx: &mut TestAppContext,
+    handle: WindowHandle<Root>,
+) -> WindowHandle<Root> {
+    in_frame(cx, handle, |window, cx| {
+        window.dispatch_action(Box::new(shellrs::app::ShowForwards), cx)
+    });
+    let handle = management_window(cx, handle);
     cx.wait_for(handle.into(), Duration::from_secs(2), |window, _| {
         window.try_find("forward-search").is_some()
     })
     .await;
+    handle
 }

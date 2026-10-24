@@ -39,6 +39,25 @@ fn open_with_local(
     store: HostStore,
     local: Arc<FixedLocalTerminalTransportProvider>,
 ) -> (WindowHandle<Root>, Entity<Workspace>) {
+    open_with_local_and_settings(cx, store, local, settings_store())
+}
+
+fn open_with_local_and_settings(
+    cx: &mut TestAppContext,
+    store: HostStore,
+    local: Arc<FixedLocalTerminalTransportProvider>,
+    settings: SettingsStore,
+) -> (WindowHandle<Root>, Entity<Workspace>) {
+    open_with_startup_target(cx, store, local, settings, None)
+}
+
+fn open_with_startup_target(
+    cx: &mut TestAppContext,
+    store: HostStore,
+    local: Arc<FixedLocalTerminalTransportProvider>,
+    settings: SettingsStore,
+    target: Option<shellrs::cli::OpenTarget>,
+) -> (WindowHandle<Root>, Entity<Workspace>) {
     init_app(cx);
     cx.update(|cx| cx.set_reduce_motion(true));
     let mut workspace = None;
@@ -50,7 +69,8 @@ fn open_with_local(
         let view = cx.new(|cx| {
             Workspace::new_with_services(
                 store,
-                cx.new(|_| settings_store()),
+                cx.new(|_| settings),
+                target,
                 remote,
                 fake_telnet_terminals(),
                 fake_serial_terminals(),
@@ -101,7 +121,9 @@ fn dispatch(cx: &mut TestAppContext, handle: WindowHandle<Root>, action: impl gp
 /// A local terminal in front, with 项目 open beside it.
 fn open_projects(cx: &mut TestAppContext, handle: WindowHandle<Root>) {
     dispatch(cx, handle, NewLocalTerminal);
-    in_frame(cx, handle, |window, cx| window.click("tool-projects", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-projects", cx)
+    });
 }
 
 /// Put the keyboard back in the terminals, blog 1's last, as a click on a
@@ -161,7 +183,8 @@ async fn a_group_made_by_name_gets_terminals_from_its_plus(cx: &mut TestAppConte
         );
     });
 
-    // Its 「+」: a terminal kept in it, open at once, named after it.
+    // Its 「+」: a terminal kept in it, open at once, named after it in
+    // Projects. Tabs use the shared local-terminal name.
     // Twice: the second press opens one more, and leaves the group open.
     for (saved, tab) in [(FIRST, 2_u64), (SECOND, 3)] {
         in_frame(cx, handle, |window, cx| {
@@ -171,10 +194,21 @@ async fn a_group_made_by_name_gets_terminals_from_its_plus(cx: &mut TestAppConte
             cx.update(|cx| workspace.read(cx).active_tab()),
             Some(CenterTab::LocalTerminal(LocalTerminalId(tab)))
         );
-        in_frame(cx, handle, |window, _| {
+        in_frame(cx, handle, |window, cx| {
             assert_eq!(
                 window.find(("local-terminal-tab", tab)).label(),
-                Some(format!("shellrs {}", saved.0).as_str())
+                Some("-zsh")
+            );
+            assert_eq!(
+                workspace
+                    .read(cx)
+                    .store()
+                    .read(cx)
+                    .saved_terminal(saved)
+                    .unwrap()
+                    .name
+                    .as_ref(),
+                format!("shellrs {}", saved.0)
             );
         });
         assert_eq!(mark(cx, handle, saved), "已打开");
@@ -217,13 +251,6 @@ async fn a_closed_terminal_stays_and_opens_again_where_its_shell_was(cx: &mut Te
         Some(&launch(Some("/code/shellrs")))
     );
     let tab = LocalTerminalId(2);
-    in_frame(cx, handle, |window, _| {
-        assert_eq!(
-            window.find(("local-terminal-tab", tab.0)).label(),
-            Some("shellrs 1")
-        );
-    });
-
     // The shell moves: the terminal remembers where.
     let store = cx.update(|cx| workspace.read(cx).store().clone());
     cx.wait_for(handle.into(), Duration::from_secs(2), |_, cx| {
@@ -236,6 +263,12 @@ async fn a_closed_terminal_stays_and_opens_again_where_its_shell_was(cx: &mut Te
             == Some("/code/shellrs/src")
     })
     .await;
+    in_frame(cx, handle, |window, _| {
+        assert_eq!(
+            window.find(("local-terminal-tab", tab.0)).label(),
+            Some("-zsh · src")
+        );
+    });
 
     // Closed, it stays in its group, grey.
     dispatch(cx, handle, CloseSavedTerminal(FIRST));
@@ -343,14 +376,16 @@ fn first_names(cx: &mut TestAppContext, handle: WindowHandle<Root>) -> (String, 
 
 #[gpui_kit::test]
 async fn a_programs_title_names_the_terminal_until_it_is_named_by_hand(cx: &mut TestAppContext) {
-    // Claude Code titles its terminal, as a terminal app's tab shows.
+    // Program titles name the project row; the tab keeps its fixed label.
     let local = Arc::new(FixedLocalTerminalTransportProvider::new(Arc::new(
         FakeTerminalFactory::printing("\x1b]0;✳ Claude Code\x07"),
     )));
     let (handle, _workspace) = open_with_local(cx, projects_store(), local);
     dispatch(cx, handle, OpenSavedTerminal(FIRST));
     dispatch(cx, handle, OpenSavedTerminal(BLOG_FIRST));
-    in_frame(cx, handle, |window, cx| window.click("tool-projects", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-projects", cx)
+    });
     cx.wait_for(handle.into(), Duration::from_secs(2), |window, _| {
         window
             .within("project-tree")
@@ -358,7 +393,7 @@ async fn a_programs_title_names_the_terminal_until_it_is_named_by_hand(cx: &mut 
             .is_some_and(|row| row.label() == Some("✳ Claude Code"))
     })
     .await;
-    let claude = || ("✳ Claude Code".to_owned(), "✳ Claude Code".to_owned());
+    let claude = || ("-zsh".to_owned(), "✳ Claude Code".to_owned());
     assert_eq!(first_names(cx, handle), claude());
 
     // Named by hand, the name shows over the title; left without one, the
@@ -366,7 +401,7 @@ async fn a_programs_title_names_the_terminal_until_it_is_named_by_hand(cx: &mut 
     rename_first(cx, handle, "claude").await;
     assert_eq!(
         first_names(cx, handle),
-        ("claude".to_owned(), "claude".to_owned())
+        ("-zsh".to_owned(), "claude".to_owned())
     );
     rename_first(cx, handle, "").await;
     assert_eq!(first_names(cx, handle), claude());
@@ -411,7 +446,9 @@ async fn a_terminals_last_title_names_it_closed_and_at_the_next_launch(cx: &mut 
     let (handle, workspace) = open_with_local(cx, HostStore::load(database).unwrap(), local);
     dispatch(cx, handle, OpenSavedTerminal(FIRST));
     dispatch(cx, handle, OpenSavedTerminal(BLOG_FIRST));
-    in_frame(cx, handle, |window, cx| window.click("tool-projects", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-projects", cx)
+    });
     cx.wait_for(handle.into(), Duration::from_secs(2), |window, _| {
         let tree = window.within("project-tree");
         [FIRST, BLOG_FIRST].into_iter().all(|id| {
@@ -433,22 +470,23 @@ async fn a_terminals_last_title_names_it_closed_and_at_the_next_launch(cx: &mut 
     cx.run_until_parked();
     let store = HostStore::load(HostDatabase::open(&path).unwrap()).unwrap();
     let (handle, _workspace) = open_with_local(cx, store, fake_local_terminals());
-    in_frame(cx, handle, |window, cx| window.click("tool-projects", cx));
-    let claude = ("✳ Claude Code".to_owned(), "✳ Claude Code".to_owned());
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-projects", cx)
+    });
+    let claude = ("✳ Claude Code".to_owned(), "-zsh".to_owned());
     assert_eq!(names(cx, handle, BLOG_FIRST, 1), claude);
     dispatch(cx, handle, OpenSavedTerminal(FIRST));
     assert_eq!(names(cx, handle, FIRST, 2), claude);
 }
 
 #[gpui_kit::test]
-async fn renaming_names_the_tab_and_deleting_closes_it(cx: &mut TestAppContext) {
+async fn renaming_in_projects_keeps_the_tab_name_and_deleting_closes_it(cx: &mut TestAppContext) {
     let (handle, workspace) = open_with_local(cx, projects_store(), fake_local_terminals());
     dispatch(cx, handle, OpenSavedTerminal(FIRST));
     dispatch(cx, handle, OpenSavedTerminal(BLOG_FIRST));
     let first = LocalTerminalId(1);
 
-    // Renamed in its dialog: the tab is called so too, until its shell
-    // titles it.
+    // Renaming in Projects keeps the shared tab name.
     dispatch(cx, handle, shellrs::app::RenameSavedTerminal(FIRST));
     in_frame(cx, handle, |window, cx| {
         window.click("project-name", cx);
@@ -457,10 +495,21 @@ async fn renaming_names_the_tab_and_deleting_closes_it(cx: &mut TestAppContext) 
         window.click("commit", cx);
     });
     wait_for_dialog_to_close(cx, handle).await;
-    in_frame(cx, handle, |window, _| {
+    in_frame(cx, handle, |window, cx| {
         assert_eq!(
             window.find(("local-terminal-tab", first.0)).label(),
-            Some("claude")
+            Some("-zsh")
+        );
+        assert_eq!(
+            workspace
+                .read(cx)
+                .store()
+                .read(cx)
+                .saved_terminal(FIRST)
+                .unwrap()
+                .name
+                .as_ref(),
+            "claude"
         );
     });
 
@@ -738,7 +787,9 @@ async fn the_next_launch_opens_the_saved_terminals_left_open(cx: &mut TestAppCon
     let mut store = projects_store();
     store.set_saved_terminal_tabs_unnotified(vec![tab(SECOND, false), tab(FIRST, true)]);
     let local = fake_local_terminals();
-    let (handle, workspace) = open_with_local(cx, store, local.clone());
+    let mut settings = settings_store();
+    settings.update_unnotified(|settings| settings.open_local_terminal_on_startup = true);
+    let (handle, workspace) = open_with_local_and_settings(cx, store, local.clone(), settings);
 
     // In their order after the seed's terminals, each where it was, the
     // one in front then in front again.
@@ -752,11 +803,11 @@ async fn the_next_launch_opens_the_saved_terminals_left_open(cx: &mut TestAppCon
     in_frame(cx, handle, |window, _| {
         assert_eq!(
             window.find(("local-terminal-tab", 1_u64)).label(),
-            Some("shellrs 2")
+            Some("-zsh")
         );
         assert_eq!(
             window.find(("local-terminal-tab", 2_u64)).label(),
-            Some("shellrs 1")
+            Some("-zsh")
         );
     });
     assert_eq!(
@@ -768,7 +819,9 @@ async fn the_next_launch_opens_the_saved_terminals_left_open(cx: &mut TestAppCon
         [tab(SECOND, false), tab(FIRST, true)]
     );
     // 项目 marks them open, and the one left closed closed.
-    in_frame(cx, handle, |window, cx| window.click("tool-projects", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-projects", cx)
+    });
     assert_eq!(mark(cx, handle, FIRST), "已打开");
     assert_eq!(mark(cx, handle, SECOND), "已打开");
     assert_eq!(mark(cx, handle, BLOG_FIRST), "未打开");
@@ -783,6 +836,188 @@ async fn the_next_launch_opens_the_saved_terminals_left_open(cx: &mut TestAppCon
 }
 
 #[gpui_kit::test]
+fn external_directory_launches_skip_the_default_startup_terminal(cx: &mut TestAppContext) {
+    let directory = tempfile::tempdir().unwrap();
+    let local = fake_local_terminals();
+    let mut settings = settings_store();
+    settings.update_unnotified(|settings| settings.open_local_terminal_on_startup = true);
+    let (handle, workspace) = open_with_startup_target(
+        cx,
+        HostStore::empty(),
+        local.clone(),
+        settings,
+        Some(shellrs::cli::OpenTarget::LocalDirectory {
+            directory: directory.path().to_owned(),
+        }),
+    );
+    cx.run_until_parked();
+    assert_eq!(local.launches().len(), 1);
+    assert_eq!(
+        local.launches()[0].directory.as_deref(),
+        Some(directory.path())
+    );
+    in_frame(cx, handle, |window, cx| {
+        assert_eq!(
+            workspace.read(cx).active_tab(),
+            Some(CenterTab::LocalTerminal(LocalTerminalId(1)))
+        );
+        assert!(window.find(("local-terminal", 1_u64)).visible());
+    });
+}
+
+#[gpui_kit::test]
+async fn a_connection_launch_skips_the_default_local_terminal(cx: &mut TestAppContext) {
+    use shellrs::cli::{OpenLink, OpenTarget};
+
+    for external in [false, true] {
+        let mut store = HostStore::empty();
+        store.insert_unnotified(HostDraft::new(
+            "dsm",
+            "dsm.test",
+            22,
+            "root",
+            AuthKind::Password,
+            None,
+        ));
+        let target = if external {
+            OpenTarget::Link(OpenLink {
+                url: "ssh://root@dsm.test".into(),
+                tab: Some("dsm".into()),
+            })
+        } else {
+            OpenTarget::Host { host: "dsm".into() }
+        };
+        let local = fake_local_terminals();
+        let mut settings = settings_store();
+        settings.update_unnotified(|settings| settings.open_local_terminal_on_startup = true);
+        let (handle, workspace) =
+            open_with_startup_target(cx, store, local.clone(), settings, Some(target));
+
+        cx.wait_for(handle.into(), Duration::from_secs(2), |window, cx| {
+            window.render_frame(cx);
+            active_connection_state(&workspace, cx) == Some(ConnectionState::Connected)
+        })
+        .await;
+        assert!(local.launches().is_empty());
+        assert_eq!(
+            cx.update(|cx| workspace.read(cx).active_tab()),
+            Some(CenterTab::Terminal(RemoteTerminalId(1)))
+        );
+        in_frame(cx, handle, |window, cx| {
+            assert_eq!(window.find(("terminal-tab", 1_u64)).label(), Some("dsm"));
+            assert!(window.try_find(("local-terminal-tab", 1_u64)).is_none());
+            assert!(
+                workspace
+                    .read(cx)
+                    .settings()
+                    .read(cx)
+                    .settings()
+                    .open_local_terminal_on_startup
+            );
+        });
+        // The preference and the normal command still work after this launch.
+        dispatch(cx, handle, NewLocalTerminal);
+        assert_eq!(local.launches().len(), 1);
+    }
+}
+
+#[gpui_kit::test]
+fn a_connection_launch_keeps_restored_terminals_and_selects_its_host(cx: &mut TestAppContext) {
+    let mut store = projects_store();
+    store.set_saved_terminal_tabs_unnotified(vec![tab(FIRST, true), tab(BLOG_FIRST, false)]);
+    let local = fake_local_terminals();
+    let mut settings = settings_store();
+    settings.update_unnotified(|settings| settings.open_local_terminal_on_startup = true);
+    let target = shellrs::cli::OpenTarget::Host {
+        host: "web-01".into(),
+    };
+    let (_, workspace) = open_with_startup_target(cx, store, local.clone(), settings, Some(target));
+    assert_eq!(local.launches().len(), 2);
+    assert_eq!(
+        cx.update(|cx| workspace.read(cx).active_tab()),
+        Some(CenterTab::Terminal(RemoteTerminalId(FIRST_NEW_TERMINAL)))
+    );
+    assert_eq!(
+        saved(&workspace, cx),
+        [tab(FIRST, true), tab(BLOG_FIRST, false)]
+    );
+}
+
+#[gpui_kit::test]
+fn a_local_terminal_can_replace_recent_on_the_next_launch(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("settings.json");
+    let (mut settings, problem) = SettingsStore::load(path.clone());
+    assert!(problem.is_none());
+    settings.update_unnotified(|settings| {
+        settings.language = InterfaceLanguage::SimplifiedChinese;
+        settings.local_terminal.shell = Some("/bin/zsh -l".into());
+    });
+    let local = fake_local_terminals();
+    let (handle, workspace) =
+        open_with_local_and_settings(cx, HostStore::empty(), local.clone(), settings);
+    in_frame(cx, handle, |window, cx| {
+        assert!(window.find("recent-hosts").visible());
+        window.click("open-settings", cx);
+    });
+    in_frame(cx, handle, |window, cx| {
+        window.within("settings").click("0-6", cx);
+    });
+    in_frame(cx, handle, |window, cx| {
+        assert_eq!(
+            window
+                .within("settings")
+                .within("group-1")
+                .within("item-0")
+                .find("check")
+                .checked(),
+            Some(false)
+        );
+        window
+            .within("settings")
+            .within("group-1")
+            .within("item-0")
+            .click("check", cx);
+    });
+    // Choosing the next launch's behavior does not open a terminal now.
+    assert!(local.launches().is_empty());
+    assert!(cx.update(|cx| {
+        workspace
+            .read(cx)
+            .settings()
+            .read(cx)
+            .settings()
+            .open_local_terminal_on_startup
+    }));
+    let (settings, problem) = SettingsStore::load(path);
+    assert!(problem.is_none());
+    assert!(settings.settings().open_local_terminal_on_startup);
+
+    let (handle, workspace) =
+        open_with_local_and_settings(cx, HostStore::empty(), local.clone(), settings);
+    assert_eq!(
+        local.launches(),
+        [LocalLaunch::new(LocalShell::new("/bin/zsh -l"))]
+    );
+    in_frame(cx, handle, |window, _| {
+        assert!(window.try_find("recent-hosts").is_none());
+        assert!(window.find(("local-terminal", 1_u64)).visible());
+        assert_eq!(window.find(("local-terminal", 1_u64)).focused(), Some(true));
+    });
+    assert_eq!(
+        cx.update(|cx| workspace.read(cx).active_tab()),
+        Some(CenterTab::LocalTerminal(LocalTerminalId(1)))
+    );
+    assert!(saved(&workspace, cx).is_empty());
+    // It is a startup preference: closing the last tab still shows Recent.
+    dispatch(cx, handle, CloseLocalTerminal(LocalTerminalId(1)));
+    in_frame(cx, handle, |window, _| {
+        assert!(window.find("recent-hosts").visible());
+    });
+    assert_eq!(local.launches().len(), 1);
+}
+
+#[gpui_kit::test]
 async fn with_the_center_split_the_sidebar_follows_the_terminal_clicked_last(
     cx: &mut TestAppContext,
 ) {
@@ -792,7 +1027,9 @@ async fn with_the_center_split_the_sidebar_follows_the_terminal_clicked_last(
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, cx| window.click("tool-snippets", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-snippets", cx)
+    });
     open_projects(cx, handle);
 
     // The local terminal to a group of its own on the right.
@@ -835,8 +1072,8 @@ async fn with_the_center_split_the_sidebar_follows_the_terminal_clicked_last(
         (("terminal", INITIAL_WEB_TERMINAL), "tool-snippets"),
     ] {
         in_frame(cx, handle, |window, cx| window.click(terminal, cx));
-        in_frame(cx, handle, |window, _| {
-            assert_eq!(window.find(tool).checked(), Some(true), "{tool}");
+        in_frame(cx, handle, |window, cx| {
+            assert_eq!(tool_checked(window, tool, cx), Some(true), "{tool}");
         });
     }
 }

@@ -78,7 +78,9 @@ fn open_monitor(cx: &mut TestAppContext, factory: Arc<FakeTerminalFactory>) -> W
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, cx| window.click("tool-monitor", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-monitor", cx)
+    });
     handle
 }
 
@@ -182,14 +184,18 @@ async fn the_monitor_reads_the_host_only_while_it_shows(cx: &mut TestAppContext)
     wait_for_label(cx, handle, "monitor-host", "web-01-vm").await;
 
     // Hidden: nothing more runs on the host.
-    in_frame(cx, handle, |window, cx| window.click("tool-monitor", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-monitor", cx)
+    });
     let hidden = factory.exec_count();
     cx.executor().advance_clock(Duration::from_secs(10));
     cx.run_until_parked();
     assert_eq!(factory.exec_count(), hidden);
 
     // Back on screen, it reads again, and shows what it had meanwhile.
-    in_frame(cx, handle, |window, cx| window.click("tool-monitor", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-monitor", cx)
+    });
     in_frame(cx, handle, |window, _| {
         assert_eq!(window.find("monitor-host").label(), Some("web-01-vm"));
     });
@@ -199,7 +205,9 @@ async fn the_monitor_reads_the_host_only_while_it_shows(cx: &mut TestAppContext)
     .await;
 
     // Nor while another tool is showing.
-    in_frame(cx, handle, |window, cx| window.click("tool-snippets", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-snippets", cx)
+    });
     let other = factory.exec_count();
     cx.executor().advance_clock(Duration::from_secs(10));
     cx.run_until_parked();
@@ -241,7 +249,9 @@ fn the_monitor_is_not_offered_on_a_host_known_not_to_run_linux(cx: &mut TestAppC
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, cx| window.click("tool-monitor", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-monitor", cx)
+    });
     in_frame(cx, handle, |window, _| {
         assert_eq!(
             window.find(("tool-sidebar", INITIAL_WEB_TERMINAL)).label(),
@@ -254,12 +264,12 @@ fn the_monitor_is_not_offered_on_a_host_known_not_to_run_linux(cx: &mut TestAppC
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_STAGING_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, _| {
-        assert!(window.try_find("tool-monitor").is_none());
-        assert!(window.try_find("tool-connections").is_none());
-        assert!(window.try_find("tool-processes").is_none());
-        assert!(window.try_find("tool-services").is_none());
-        assert!(window.find("tool-history").visible());
+    in_frame(cx, handle, |window, cx| {
+        assert!(!tool_offered(window, "tool-monitor", cx));
+        assert!(!tool_offered(window, "tool-connections", cx));
+        assert!(!tool_offered(window, "tool-processes", cx));
+        assert!(!tool_offered(window, "tool-services", cx));
+        assert!(tool_offered(window, "tool-history", cx));
         assert!(
             window
                 .try_find(("tool-sidebar", INITIAL_STAGING_TERMINAL))
@@ -271,8 +281,8 @@ fn the_monitor_is_not_offered_on_a_host_known_not_to_run_linux(cx: &mut TestAppC
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, _| {
-        assert_eq!(window.find("tool-monitor").checked(), Some(true));
+    in_frame(cx, handle, |window, cx| {
+        assert_eq!(tool_checked(window, "tool-monitor", cx), Some(true));
         assert!(
             window
                 .try_find(("tool-sidebar", INITIAL_WEB_TERMINAL))
@@ -308,12 +318,12 @@ async fn the_monitor_goes_once_the_host_turns_out_not_to_run_linux(cx: &mut Test
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
-    cx.wait_for(handle.into(), Duration::from_secs(2), |window, _| {
-        window.try_find("tool-monitor").is_none()
+    cx.wait_for(handle.into(), Duration::from_secs(2), |window, cx| {
+        !tool_offered(window, "tool-monitor", cx)
     })
     .await;
-    in_frame(cx, handle, |window, _| {
-        assert!(window.find("tool-snippets").visible());
+    in_frame(cx, handle, |window, cx| {
+        assert!(tool_offered(window, "tool-snippets", cx));
     });
     let os = workspace.read_with(cx, |workspace, cx| {
         workspace

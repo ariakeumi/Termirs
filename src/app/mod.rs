@@ -3,6 +3,10 @@
 mod actions;
 mod app_icon;
 mod assets;
+#[cfg(target_os = "macos")]
+mod launch;
+#[cfg(target_os = "macos")]
+mod menus;
 mod paths;
 mod quit;
 mod rendering;
@@ -13,6 +17,10 @@ mod window_hiding;
 pub use actions::*;
 pub use app_icon::show_logo_when_unbundled;
 pub use assets::{AppAssets, CatalogIcon, DOCKER_ICON};
+#[cfg(target_os = "macos")]
+pub use launch::{launch_in_background, take_background_launch};
+#[cfg(target_os = "macos")]
+pub use menus::application_menus;
 pub use paths::{
     PORTABLE_BIN, PORTABLE_DATA, SETUP_UNINSTALLER, analytics_path, cli_endpoint, cli_socket_path,
     data_dir, database_path, keys_dir, portable_root, settings_path, terminal_output_dir,
@@ -34,6 +42,8 @@ use crate::i18n::t;
 
 /// Key context of the host panel, for bindings that only apply there.
 pub const HOST_PANEL_CONTEXT: &str = "HostPanel";
+pub const OPEN_TABS_CONTEXT: &str = "OpenTabs";
+pub const HOST_MANAGER_CONTEXT: &str = "HostManager";
 pub const RECENT_HOSTS_CONTEXT: &str = "RecentHosts";
 /// Key context of the port-forwarding list.
 pub const FORWARD_PANEL_CONTEXT: &str = "ForwardPanel";
@@ -60,9 +70,9 @@ pub const DESKTOP_APP_ID: &str = "shellrs";
 /// copy it gets its own taskbar button and pinning it pins this copy.
 pub fn app_identity() -> &'static str {
     if portable_root().is_some() {
-        "com.shellrs.ShellRS.Portable"
+        "li.baka.Termirs.Portable"
     } else {
-        "com.shellrs.ShellRS"
+        "li.baka.Termirs"
     }
 }
 
@@ -81,9 +91,27 @@ pub fn init(cx: &mut App) {
     // gpui-kit's own text in the language ShellRS's is in: the saved one,
     // which `main` set before anything was built.
     crate::i18n::set_locale(crate::i18n::locale());
+    #[cfg(target_os = "macos")]
+    menus::init(cx);
     // The defaults; the settings bring the user's changes once read.
     apply_shortcuts(&ShortcutOverrides::default(), cx);
     cx.on_action(|_: &Quit, cx: &mut App| quit::quit(cx));
+}
+
+/// Native menus keep their labels and shortcut equivalents until rebuilt.
+pub(crate) fn refresh_menus(cx: &mut App) {
+    #[cfg(target_os = "macos")]
+    menus::refresh(cx);
+    #[cfg(not(target_os = "macos"))]
+    let _ = cx;
+}
+
+/// Keep the native tool commands in line with the workspace's available tools.
+pub(crate) fn sync_tool_menu(offered: Vec<ToolKind>, showing: Option<ToolKind>, cx: &mut App) {
+    #[cfg(target_os = "macos")]
+    menus::sync_tools(offered, showing, cx);
+    #[cfg(not(target_os = "macos"))]
+    let _ = (offered, showing, cx);
 }
 
 /// How much of a selected row's color hover gets in the dark appearance.

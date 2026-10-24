@@ -73,7 +73,7 @@ impl ToolTarget {
 
 /// How wide the right sidebar opens, and the narrowest it can be dragged:
 /// the monitor's and the connections' cards are laid out for this width.
-pub(super) const TOOL_SIDEBAR_WIDTH: Pixels = px(320.);
+pub(super) const TOOL_SIDEBAR_WIDTH: Pixels = px(crate::settings::SidebarWidths::MIN_RIGHT);
 
 impl Workspace {
     pub(super) fn on_kubernetes_action(
@@ -226,6 +226,10 @@ impl Workspace {
         }
         self.sync_tool_sidebar(window, cx);
         self.sync_saved_terminals(cx);
+        self.sync_open_tabs(cx);
+        self.tab_sidebar.update(cx, |list, cx| {
+            list.restore_navigation_focus(tab, window, cx)
+        });
     }
 
     /// The switch's buttons: show that tool, or hide the sidebar when it is
@@ -843,6 +847,7 @@ impl Workspace {
             tools.set_target(target, open, cx);
         });
         if self.dock_area.read(cx).is_dock_open(DockPlacement::Right) != open {
+            self.resize_for_file_sidebar(tool, window, cx);
             // A focus inside the sidebar would go off screen with it.
             let focus_inside = self
                 .tools
@@ -856,8 +861,47 @@ impl Workspace {
                 self.focus_center(window, cx);
             }
         }
-        // The switch comes and goes with the terminal, and marks the tool.
+        crate::app::sync_tool_menu(self.offered_tools(cx), self.tool_showing(cx), cx);
+        // Tool commands follow the terminal and mark the tool it is showing.
         cx.notify();
+    }
+
+    /// Grow toward the display's right edge rather than taking width from
+    /// the terminal. Keep that extra width through tool switches, and give
+    /// it back only when the right dock closes.
+    fn resize_for_file_sidebar(&mut self, tool: Option<ToolKind>, window: &mut Window, cx: &App) {
+        if window.is_fullscreen() || window.is_maximized() {
+            if tool.is_none() {
+                self.file_sidebar_expansion = Pixels::ZERO;
+            }
+            return;
+        }
+        let WindowBounds::Windowed(bounds) = window.window_bounds() else {
+            return;
+        };
+        let mut content = window.viewport_size();
+        if tool == Some(ToolKind::Files) {
+            let width = self
+                .dock_area
+                .read(cx)
+                .dock_size(DockPlacement::Right)
+                .unwrap_or(TOOL_SIDEBAR_WIDTH);
+            let available = window
+                .display(cx)
+                .map(|display| {
+                    (display.visible_bounds().right() - bounds.right()).max(Pixels::default())
+                })
+                .unwrap_or(width);
+            self.file_sidebar_expansion = width.min(available);
+            content.width += self.file_sidebar_expansion;
+        } else if tool.is_none() {
+            content.width -= std::mem::take(&mut self.file_sidebar_expansion);
+        } else {
+            return;
+        }
+        if content != window.viewport_size() {
+            window.resize(content);
+        }
     }
 }
 

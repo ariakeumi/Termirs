@@ -1,6 +1,5 @@
 //! Controlled presentation of broadcast membership, owned by the workspace:
-//! a checkbox ahead of a terminal tab's mark, which keeps telling whether
-//! the terminal is connected.
+//! a checkbox ahead of a terminal tab's title.
 
 use crate::app::{CenterTab, SetBroadcastTarget};
 use crate::i18n::t;
@@ -25,21 +24,12 @@ impl BroadcastSelection {
         }
     }
 
-    /// A tab's leading `mark`, after its checkbox while 命令广播 is on.
-    pub(super) fn lead(
+    pub(super) fn checkbox(
         selection: Option<Self>,
         tab: CenterTab,
         name: SharedString,
-        mark: impl IntoElement,
-    ) -> AnyElement {
-        match selection {
-            Some(selection) => h_flex()
-                .gap_1()
-                .child(selection.render(tab, name))
-                .child(mark)
-                .into_any_element(),
-            None => mark.into_any_element(),
-        }
+    ) -> Option<AnyElement> {
+        selection.map(|selection| selection.render(tab, name).into_any_element())
     }
 
     fn render(self, tab: CenterTab, name: SharedString) -> impl IntoElement {

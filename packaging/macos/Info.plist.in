@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  The bundle's identity. CFBundleIdentifier and the signing team must never
-  change: the keychain grants each saved password to them, so a new
-  identifier would have macOS ask about every password again.
+  The Termirs bundle identity replaces com.shellrs.ShellRS. Keep this
+  identifier and the signing team stable in future releases: changing them
+  can require local-network and keychain access to be authorized again.
+  User data and keychain service names retain their existing shellrs names.
   bundle.sh fills in @VERSION@ and @BUILD@ (a number that only goes up).
   The languages are the interface's: the system's own panels (the file
   picker, the menu bar's standard items) follow whichever of them the user
@@ -20,17 +21,17 @@
 		<string>zh-Hans</string>
 	</array>
 	<key>CFBundleDisplayName</key>
-	<string>ShellRS</string>
+	<string>Termirs</string>
 	<key>CFBundleExecutable</key>
 	<string>shellrs</string>
 	<key>CFBundleIconFile</key>
-	<string>ShellRS</string>
+	<string>Termirs</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.shellrs.ShellRS</string>
+	<string>li.baka.Termirs</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>ShellRS</string>
+	<string>Termirs</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -39,13 +40,28 @@
 	<string>@BUILD@</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.developer-tools</string>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Folder</string>
+			<key>CFBundleTypeRole</key>
+			<string>Shell</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.folder</string>
+			</array>
+		</dict>
+	</array>
 	<key>LSMinimumSystemVersion</key>
 	<string>11.0</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>ShellRS needs the local network to connect to hosts on your LAN.</string>
+	<string>Termirs needs the local network to connect to hosts on your LAN.</string>
 	<key>NSHumanReadableCopyright</key>
-	<string>© ShellRS</string>
+	<string>© Termirs</string>
 </dict>
 </plist>

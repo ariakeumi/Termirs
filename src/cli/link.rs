@@ -1,4 +1,5 @@
-//! The links ShellRS is opened with, the way bastion hosts open Xshell:
+//! App launches: a saved host's name or ID, or the links bastion hosts
+//! pass the way they open Xshell:
 //! `ShellRS ssh://user@host:port`, or `ShellRS -url ssh://… -newtab 名称`;
 //! and WinSCP: `ShellRS sftp://user@host:port`, or with
 //! `/sessionname=名称` in front.
@@ -10,10 +11,80 @@
 
 use std::ffi::OsString;
 use std::fmt;
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
 use crate::host::standard_url;
+
+/// What an app launch opens. Link launches keep their existing wire shape.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum OpenTarget {
+    LocalDirectory { directory: PathBuf },
+    Host { host: String },
+    Link(OpenLink),
+}
+
+impl OpenTarget {
+    /// A local file URL delivered by macOS. Only directories are opened;
+    /// documents and scripts must never become shell commands.
+    pub fn from_directory_url(value: &str) -> Option<Self> {
+        let directory = url::Url::parse(value).ok()?.to_file_path().ok()?;
+        directory
+            .is_dir()
+            .then_some(Self::LocalDirectory { directory })
+    }
+}
+
+/// Recognize an app launch before passing other arguments to the external
+/// CLI. `--host` also allows names that collide with CLI commands or URLs.
+pub fn launch_arguments(args: &[OsString]) -> Option<OpenTarget> {
+    if let [option, directory] = args
+        && option == "--working-directory"
+    {
+        let directory = std::path::absolute(directory).ok()?;
+        return Some(OpenTarget::LocalDirectory { directory });
+    }
+    if let [value] = args {
+        if let Some(target) = OpenTarget::from_directory_url(&value.to_string_lossy()) {
+            return Some(target);
+        }
+        let path = PathBuf::from(value);
+        if path.is_absolute() && path.is_dir() {
+            return Some(OpenTarget::LocalDirectory {
+                directory: std::path::absolute(path).ok()?,
+            });
+        }
+    }
+    if let [option, host] = args
+        && option == "--host"
+    {
+        return Some(OpenTarget::Host {
+            host: host.to_string_lossy().into_owned(),
+        });
+    }
+    if let Some(link) = link_arguments(args) {
+        return Some(OpenTarget::Link(link));
+    }
+    let [host] = args else {
+        return None;
+    };
+    let host = host.to_string_lossy();
+    // Derive reserved names from clap so new subcommands keep working.
+    use clap::CommandFactory as _;
+    if host.starts_with('-')
+        || host == "help"
+        || super::Cli::command()
+            .get_subcommands()
+            .any(|command| command.get_name() == host)
+    {
+        return None;
+    }
+    Some(OpenTarget::Host {
+        host: host.into_owned(),
+    })
+}
 
 /// A link to connect to, as the caller wrote it.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -173,6 +244,113 @@ mod tests {
             url: url.into(),
             tab: tab.map(str::to_string),
         })
+    }
+
+    fn launch(args: &[&str]) -> Option<OpenTarget> {
+        launch_arguments(&args.iter().map(OsString::from).collect::<Vec<_>>())
+    }
+
+    #[test]
+    fn local_directories_open_from_paths_arguments_and_macos_urls() {
+        let root = tempfile::tempdir().unwrap();
+        let directory = root.path().join("项目 spaces # ' $()");
+        std::fs::create_dir(&directory).unwrap();
+        let expected = OpenTarget::LocalDirectory {
+            directory: directory.clone(),
+        };
+        let path = directory.to_str().unwrap();
+        let url = url::Url::from_directory_path(&directory).unwrap();
+        assert_eq!(launch(&[path]), Some(expected.clone()));
+        assert_eq!(
+            launch(&["--working-directory", path]),
+            Some(expected.clone())
+        );
+        assert_eq!(launch(&[url.as_str()]), Some(expected.clone()));
+        assert_eq!(
+            OpenTarget::from_directory_url(url.as_str()),
+            Some(expected.clone())
+        );
+        let wire = serde_json::to_vec(&expected).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<OpenTarget>(&wire).unwrap(),
+            expected
+        );
+
+        let file = directory.join("run.command");
+        std::fs::write(&file, "exit 1").unwrap();
+        for value in [
+            url::Url::from_file_path(file).unwrap().to_string(),
+            url::Url::from_directory_path(directory.join("missing"))
+                .unwrap()
+                .to_string(),
+            "file://other-machine/tmp/".into(),
+            "ssh://root@example.com".into(),
+        ] {
+            assert_eq!(OpenTarget::from_directory_url(&value), None, "{value}");
+        }
+    }
+
+    #[test]
+    fn a_saved_host_name_or_id_launches_the_app() {
+        for host in ["web-01", "生产 服务器", "0123456789abcdef", "", " web "] {
+            let expected = Some(OpenTarget::Host { host: host.into() });
+            assert_eq!(launch(&[host]), expected);
+            assert_eq!(launch(&["--host", host]), expected);
+        }
+        // Explicit names can look like CLI commands, options or links.
+        for host in ["exec", "hosts", "--help", "ssh://root@host"] {
+            assert_eq!(
+                launch(&["--host", host]),
+                Some(OpenTarget::Host { host: host.into() })
+            );
+        }
+    }
+
+    #[test]
+    fn saved_host_launches_preserve_cli_commands_and_links() {
+        use clap::CommandFactory as _;
+        for command in super::super::Cli::command().get_subcommands() {
+            assert_eq!(launch(&[command.get_name()]), None);
+        }
+        for args in [
+            &[][..],
+            &["help"],
+            &["--help"],
+            &["--version"],
+            &["--host"],
+            &["--host", "web", "extra"],
+            &["exec", "web", "uname -a"],
+            &["hosts", "list"],
+            &["web", "extra"],
+        ] {
+            assert_eq!(launch(args), None, "{args:?}");
+        }
+        assert_eq!(
+            launch(&["ssh://root@host"]),
+            open("ssh://root@host", None).map(OpenTarget::Link)
+        );
+        assert_eq!(
+            launch(&["-url", "sftp://root@host", "-newtab", "Files"]),
+            open("sftp://root@host", Some("Files")).map(OpenTarget::Link)
+        );
+    }
+
+    #[test]
+    fn launch_targets_round_trip_without_changing_the_link_wire_format() {
+        let link = launch(&["ssh://root@host"]).unwrap();
+        assert_eq!(
+            serde_json::to_string(&link).unwrap(),
+            r#"{"url":"ssh://root@host"}"#
+        );
+        let host = launch(&["生产 服务器"]).unwrap();
+        assert_eq!(
+            serde_json::to_string(&host).unwrap(),
+            r#"{"host":"生产 服务器"}"#
+        );
+        for target in [host, link] {
+            let wire = serde_json::to_vec(&target).unwrap();
+            assert_eq!(serde_json::from_slice::<OpenTarget>(&wire).unwrap(), target);
+        }
     }
 
     #[test]

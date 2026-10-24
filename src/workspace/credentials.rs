@@ -1,4 +1,4 @@
-//! The workspace's share of credentials: the sidebar's switch and the
+//! The workspace's share of credentials: its management window and the
 //! commands of the credential list.
 
 use std::path::PathBuf;
@@ -16,7 +16,7 @@ use crate::host::{AuthKind, CredentialKind, read_public_key};
 use crate::i18n::{t, tn};
 use crate::shared::confirm_delete;
 
-use super::{sidebar::SidebarMode, workspace_view::Workspace};
+use super::{host_manager::ManagerSection, workspace_view::Workspace};
 
 impl Workspace {
     pub(super) fn on_show_credentials(
@@ -25,7 +25,7 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.show_sidebar(SidebarMode::Credentials, window, cx);
+        self.show_host_manager(ManagerSection::Credentials, window, cx);
     }
 
     pub(super) fn on_new_credential(

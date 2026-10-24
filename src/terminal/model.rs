@@ -66,7 +66,7 @@ impl Dimensions for TerminalSize {
     }
 }
 
-/// Process state shown by the terminal panel and the workspace status bar.
+/// Process state of a terminal.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TerminalLifecycle {
     Starting,
@@ -113,8 +113,7 @@ impl fmt::Display for TerminalLifecycle {
     }
 }
 
-/// What the window's status bar shows of a terminal: whether it runs, and
-/// how many columns and rows its screen has.
+/// A snapshot of a terminal's process state and screen size.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TerminalStatus {
     lifecycle: TerminalLifecycle,

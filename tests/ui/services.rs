@@ -71,7 +71,9 @@ fn open_services(cx: &mut TestAppContext, factory: Arc<FakeTerminalFactory>) -> 
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, cx| window.click("tool-services", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-services", cx)
+    });
     handle
 }
 

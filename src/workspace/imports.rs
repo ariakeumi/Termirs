@@ -47,7 +47,18 @@ impl Workspace {
                     .ok();
             },
         );
-        let return_focus = self.host_panel.read(cx).focus_handle(cx);
+        let in_manager = self.host_manager_window() == Some(window.window_handle());
+        if !in_manager && window.focused(cx).is_none() {
+            self.focus_center(window, cx);
+        }
+        let Some(return_focus) = self
+            .host_panel(cx)
+            .filter(|_| in_manager)
+            .map(|panel| panel.read(cx).focus_handle(cx))
+            .or_else(|| window.focused(cx))
+        else {
+            return;
+        };
         open_import_dialog(
             source,
             self.ssh_dir.clone(),

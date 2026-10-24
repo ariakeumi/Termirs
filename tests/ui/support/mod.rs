@@ -63,12 +63,14 @@ mod credential;
 mod forward;
 mod sftp;
 mod terminal;
+mod tools;
 
 pub use connection::*;
 pub use credential::*;
 pub use forward::*;
 pub use sftp::*;
 pub use terminal::*;
+pub use tools::*;
 
 /// Seeded host ids, in insertion order (see `HostStore::seed`).
 pub const WEB_01: u64 = 1;
@@ -87,6 +89,75 @@ pub const DEVELOPMENT: u64 = 3;
 
 pub fn open_workspace(cx: &mut TestAppContext) -> (WindowHandle<Root>, Entity<Workspace>) {
     open_workspace_with_store(cx, HostStore::seed())
+}
+
+/// Connection of the tab in front, independent of any presentation.
+pub fn active_connection_state(workspace: &Entity<Workspace>, cx: &App) -> Option<ConnectionState> {
+    let workspace = workspace.read(cx);
+    match workspace.active_tab()? {
+        CenterTab::Terminal(id) => {
+            Some(workspace.remote_terminal(id)?.read(cx).connection_state(cx))
+        }
+        CenterTab::Explorer(id) => Some(workspace.explorer(id)?.read(cx).connection_state()),
+        CenterTab::Editor(id) => {
+            let explorer = workspace.editor(id)?.read(cx).explorer_id()?;
+            Some(workspace.explorer(explorer)?.read(cx).connection_state())
+        }
+        _ => None,
+    }
+}
+
+pub fn active_local_lifecycle(
+    workspace: &Entity<Workspace>,
+    cx: &App,
+) -> Option<TerminalLifecycle> {
+    let workspace = workspace.read(cx);
+    let CenterTab::LocalTerminal(id) = workspace.active_tab()? else {
+        return None;
+    };
+    Some(
+        workspace
+            .local_terminal(id)?
+            .read(cx)
+            .terminal()
+            .read(cx)
+            .lifecycle(cx),
+    )
+}
+
+pub fn open_host_manager(
+    cx: &mut TestAppContext,
+    main: WindowHandle<Root>,
+    workspace: &Entity<Workspace>,
+) -> WindowHandle<Root> {
+    in_frame(cx, main, |window, cx| {
+        window.dispatch_action(Box::new(shellrs::app::ShowHosts), cx)
+    });
+    cx.update(|cx| {
+        workspace
+            .read(cx)
+            .host_manager_window()
+            .expect("host management window opened")
+            .downcast::<Root>()
+            .unwrap()
+    })
+}
+
+pub fn management_window(
+    cx: &mut TestAppContext,
+    handle: WindowHandle<Root>,
+) -> WindowHandle<Root> {
+    handle
+        .read_with(cx, |root, cx| {
+            root.view()
+                .clone()
+                .downcast::<Workspace>()
+                .ok()
+                .and_then(|workspace| workspace.read(cx).host_manager_window())
+                .map(|window| window.downcast::<Root>().unwrap())
+                .unwrap_or(handle)
+        })
+        .unwrap()
 }
 
 /// Production loads the store from the database; the tests hand one in
@@ -199,12 +270,14 @@ pub fn enabled(button: &gpui_kit::test::ElementSnapshot) -> bool {
     button.focused().is_some()
 }
 
-/// What a tab's host mark says of the tab's own connection: `None` while it
-/// is up and the mark is in colour, else the state its grey mark names after
-/// the system (`未连接`, `连接中`).
-pub fn mark_state(window: &gpui_kit::Window, mark: impl Into<ElementId>) -> Option<String> {
-    let label = window.find(mark).label()?.to_string();
-    label.split_once(" · ").map(|(_, state)| state.to_string())
+/// What a remote tab says of its own connection. Connected is the normal
+/// state; the title's tooltip and accessibility label report other states.
+pub fn tab_connection_state(
+    window: &mut gpui_kit::Window,
+    tab: impl Into<ElementId>,
+) -> Option<String> {
+    let label = window.within(tab).find("title").label()?.to_string();
+    (label != ConnectionState::Connected.label().as_ref()).then_some(label)
 }
 
 /// Draw a frame, run `body` against it, and let what it started settle.

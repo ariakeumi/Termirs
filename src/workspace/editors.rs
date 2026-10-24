@@ -18,7 +18,7 @@ use crate::sftp::TextFile;
 use crate::shared::confirm_danger;
 
 impl Workspace {
-    /// The editor of one tab, for tests and the status line.
+    /// The editor of one tab.
     pub fn editor(&self, id: EditorId) -> Option<&Entity<EditorPanel>> {
         self.editors.get(&id)
     }

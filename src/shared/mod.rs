@@ -5,7 +5,6 @@ mod command_line;
 mod detail_row;
 mod dialog;
 mod format;
-mod host_mark;
 mod latency_label;
 mod metrics;
 mod rename_tab_dialog;
@@ -22,7 +21,6 @@ pub use dialog::{
     dismiss_form_error, form_error_notification, parse_port,
 };
 pub use format::{format_bytes, format_duration, format_percent};
-pub use host_mark::HostMark;
 pub use latency_label::LatencyLabel;
 pub use metrics::{Load, amount, card, gauge, load_color, meter, numeric};
 pub use rename_tab_dialog::{RenamableTab, open_rename_tab_dialog};

@@ -2,15 +2,17 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 use gpui_kit::component::{
-    ActiveTheme as _, Icon, IconName, Placement, Selectable as _, Sizable as _,
-    button::{Button, ButtonVariants as _},
+    ActiveTheme as _, Icon, IconName, Sizable as _,
+    button::Button,
     dock::{BasePanel, Panel, PanelControl, PanelEvent},
     h_flex, v_flex,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
-use crate::app::{CatalogIcon, NewSavedTerminal, NewTerminalGroup, ToggleTool, ToolKind};
+#[cfg(not(target_os = "macos"))]
+use crate::app::ToggleTool;
+use crate::app::{CatalogIcon, NewSavedTerminal, NewTerminalGroup, ToolKind};
 use crate::docker::{Container, DockerObject, DockerPanel, ObjectSummary};
 use crate::explorer::ExplorerPanel;
 use crate::gpu::GpuPanel;
@@ -26,6 +28,8 @@ use crate::services::{Service, ServicePanel};
 use crate::snippets::SnippetPanel;
 use crate::terminal::{ExecTarget, LocalTerminalId, RemoteTerminalId, TerminalView};
 use crate::tmux::{TmuxPanel, TmuxTable};
+#[cfg(not(target_os = "macos"))]
+use gpui_kit::component::{Placement, Selectable as _, button::ButtonVariants as _};
 
 impl ToolKind {
     /// Whether the tool runs commands or SFTP on a channel of its own beside
@@ -60,6 +64,7 @@ impl ToolKind {
     }
 
     /// The id of the tool's button in the switch.
+    #[cfg(not(target_os = "macos"))]
     fn button_id(self) -> &'static str {
         match self {
             ToolKind::Snippets => "tool-snippets",
@@ -595,6 +600,7 @@ impl Render for ToolSidebar {
 /// dock, which goes off screen whole when it is hidden. The buttons do not
 /// take the focus, so the terminal keeps the keyboard, and dispatch on
 /// `target`, the workspace's focus handle, so they work whatever is focused.
+#[cfg(not(target_os = "macos"))]
 pub fn render_tool_switch(
     showing: Option<ToolKind>,
     offered: &[ToolKind],
@@ -619,7 +625,7 @@ pub fn render_tool_switch(
                 .selected(showing == Some(tool))
                 // A switch: assistive technology hears it as pressed.
                 .toggled(showing == Some(tool))
-                .tooltip(tool.label())
+                .tooltip_with_action(tool.label(), &ToggleTool(tool), None)
                 // Toward the window, not off its edge.
                 .tooltip_placement(Placement::Left)
                 .accessibility_label(tool.label())

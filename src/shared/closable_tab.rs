@@ -5,17 +5,17 @@ use gpui_kit::component::{
     button::{Button, ButtonVariants as _},
     h_flex,
     menu::{ContextMenuExt as _, PopupMenu},
+    tooltip::Tooltip,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
-use crate::app::ToggleHostPanel;
 use crate::host::ConnectionState;
 use crate::i18n::t;
 
 type MenuBuilder = Rc<dyn Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu>;
 
-/// A dock tab title: a leading mark, the label and, for closable panels, a
+/// A dock tab title: an optional leading element, the label and, for closable panels, a
 /// close button that dispatches the panel's close action. A panel may also
 /// give the title a context menu, which opens on a right click anywhere on it.
 ///
@@ -24,16 +24,12 @@ type MenuBuilder = Rc<dyn Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) ->
 /// workspace wants every tab closable (an empty center shows the recent
 /// hosts instead) and removes the panel from the dock itself.
 ///
-/// Double-clicking the title shows or hides the host sidebar, the way a
-/// double click on an editor tab gives it the room elsewhere.
-///
-/// The context menu and the double click hang on the title rather than on
-/// the dock's `Tab`, which the application does not render. The tab's own
-/// horizontal padding is therefore outside them; clicks there only select.
+/// The surrounding sidebar row owns selection; the title owns its context
+/// menu and optional close command. Sidebar titles omit the close button.
 #[derive(IntoElement)]
 pub struct ClosableTabTitle {
     id: ElementId,
-    leading: AnyElement,
+    leading: Option<AnyElement>,
     label: SharedString,
     close: Option<(ElementId, Box<dyn Action>)>,
     menu: Option<MenuBuilder>,
@@ -49,9 +45,14 @@ impl ClosableTabTitle {
         leading: impl IntoElement,
         label: impl Into<SharedString>,
     ) -> Self {
+        Self::text(id, label).with_leading(leading)
+    }
+
+    /// A title without an icon or a reserved leading slot.
+    pub fn text(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Self {
         Self {
             id: id.into(),
-            leading: leading.into_any_element(),
+            leading: None,
             label: label.into(),
             close: None,
             menu: None,
@@ -60,10 +61,14 @@ impl ClosableTabTitle {
         }
     }
 
+    pub fn with_leading(mut self, leading: impl IntoElement) -> Self {
+        self.leading = Some(leading.into_any_element());
+        self
+    }
+
     /// Show this tab's own connection state, never its host's aggregate state:
-    /// a connection that is not up greys the label, as the panel greys the
-    /// mark it passes in (`HostMark::connection_state`). Colour means
-    /// connected; there is no dot to look for. Tabs that do not own a remote
+    /// a connection that is not up greys the label. The title's tooltip and
+    /// accessibility label also report the state. Tabs that do not own a remote
     /// connection leave this unset.
     pub fn connection_state(mut self, state: ConnectionState) -> Self {
         self.connection_state = Some(state);
@@ -77,7 +82,8 @@ impl ClosableTabTitle {
         self
     }
 
-    /// Show a close button that dispatches `action` on the focused path.
+    /// Show a close button that dispatches the panel's close action.
+    /// Sidebar titles omit this and retain closing in their context menus.
     pub fn closable(mut self, id: impl Into<ElementId>, action: Box<dyn Action>) -> Self {
         self.close = Some((id.into(), action));
         self
@@ -101,10 +107,22 @@ impl RenderOnce for ClosableTabTitle {
             .is_some_and(|state| !state.is_connected());
         let row = h_flex()
             .id("title")
+            .test_support()
+            .w_full()
+            .min_w_0()
             .gap_1()
-            .child(self.leading)
+            .children(self.leading)
+            .when_some(self.connection_state, |row, state| {
+                row.aria_label(state.label())
+                    .tooltip(move |window, cx| Tooltip::new(state.label()).build(window, cx))
+            })
             .child(
                 div()
+                    .id("label")
+                    .test_support()
+                    .aria_label(self.label.clone())
+                    .flex_1()
+                    .min_w_0()
                     // A long title, such as a command line a shell names the
                     // tab after, gives way rather than the tab bar.
                     .max_w(rems(20.))
@@ -143,12 +161,8 @@ impl RenderOnce for ClosableTabTitle {
             });
         div()
             .id(self.id)
-            // The first click selects the tab as usual.
-            .on_click(|event, window, cx| {
-                if event.click_count() == 2 {
-                    window.dispatch_action(Box::new(ToggleHostPanel), cx);
-                }
-            })
+            .w_full()
+            .min_w_0()
             .test_support()
             .aria_label(self.label)
             .child(match self.menu {

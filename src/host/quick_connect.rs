@@ -1,5 +1,5 @@
-//! 快速连接: the start page's palette for reaching saved hosts by typing a
-//! few letters of them.
+//! 快速打开: the searchable palette for connecting to saved SSH hosts,
+//! available from the shortcut, menu and start page.
 //!
 //! The list is gpui-kit's `List` (its search box, ↑↓, Enter and a click
 //! connect the highlighted host). Choosing several and connecting them
@@ -11,7 +11,7 @@
 use std::collections::HashSet;
 
 use gpui_kit::component::{
-    ActiveTheme as _, IconName, IndexPath, Sizable as _, WindowExt as _,
+    ActiveTheme as _, IconName, IndexPath, WindowExt as _,
     dialog::DialogFooter,
     h_flex,
     input::{Enter, IndentInline, SelectAll},
@@ -25,9 +25,8 @@ use gpui_kit::prelude::FluentBuilder as _;
 
 use crate::app::ConnectHost;
 use crate::i18n::t;
-use crate::shared::HostMark;
 
-use super::{HostId, HostOs, HostStore, ProtocolKind};
+use super::{HostId, HostStore};
 
 /// Whether several hosts can be chosen (Tab, ⌘A, ⌘-click) and connected to
 /// together (⇧↵), with the keys in the footer. Off for now (the user's
@@ -47,8 +46,6 @@ pub struct QuickHost {
     /// The full group path (`公司 / MySQL 集群`), when it has a group.
     pub group: Option<SharedString>,
     pub notes: SharedString,
-    pub os: Option<HostOs>,
-    pub protocol: ProtocolKind,
 }
 
 impl QuickHost {
@@ -78,7 +75,7 @@ impl QuickHost {
     }
 }
 
-/// The saved hosts, those connected to lately first (the latest first), then
+/// The saved SSH hosts, those connected to lately first (the latest first), then
 /// the rest by name.
 pub fn quick_hosts(store: &HostStore) -> Vec<QuickHost> {
     let of = |host: &super::Host| QuickHost {
@@ -91,19 +88,17 @@ pub fn quick_hosts(store: &HostStore) -> Vec<QuickHost> {
             .group
             .map(|group| SharedString::from(store.group_path(group))),
         notes: host.notes.clone(),
-        os: host.os,
-        protocol: host.kind(),
     };
     let mut hosts: Vec<QuickHost> = store
         .recent_hosts()
-        .filter(|host| !store.is_temporary(host.id))
+        .filter(|host| host.is_ssh() && !store.is_temporary(host.id))
         .map(of)
         .collect();
     let recent: HashSet<HostId> = hosts.iter().map(|host| host.id).collect();
     let mut rest: Vec<QuickHost> = store
         .hosts()
         .iter()
-        .filter(|host| !recent.contains(&host.id))
+        .filter(|host| host.is_ssh() && !recent.contains(&host.id))
         .map(of)
         .collect();
     rest.sort_by_key(|host| host.name.to_lowercase());
@@ -258,10 +253,17 @@ impl ListDelegate for QuickConnectList {
     fn perform_search(
         &mut self,
         query: &str,
-        _: &mut Window,
-        _: &mut Context<ListState<Self>>,
+        window: &mut Window,
+        cx: &mut Context<ListState<Self>>,
     ) -> Task<()> {
         self.choice.search(query);
+        // List chooses against its previous row cache after this callback.
+        // Reconcile with the new results, including recovery from no matches.
+        cx.defer_in(window, |list, window, cx| {
+            let first = (list.delegate().choice().shown_count() > 0).then(IndexPath::default);
+            list.set_selected_index(first, window, cx);
+            cx.notify();
+        });
         Task::ready(())
     }
 
@@ -293,17 +295,6 @@ impl ListDelegate for QuickConnectList {
                         .aria_label(SharedString::from(format!("{} · {detail}", host.name)))
                         .aria_selected(chosen)
                         .gap_3()
-                        .child(
-                            HostMark::new(
-                                ("quick-connect-os", host.id.0),
-                                host.name.clone(),
-                                host.address.clone(),
-                                host.os,
-                            )
-                            .protocol(host.protocol)
-                            .without_tooltip()
-                            .small(),
-                        )
                         .child(
                             v_flex()
                                 .min_w_0()
@@ -364,7 +355,7 @@ fn key_hint(keys: &str, label: SharedString) -> impl IntoElement {
         .child(label)
 }
 
-/// Open 快速连接: search the saved hosts and connect to one, or choose
+/// Open 快速打开: search the saved SSH hosts and connect to one, or choose
 /// several and connect to them together. `dispatch` is the workspace's
 /// focus handle.
 pub fn open_quick_connect_dialog(
@@ -493,6 +484,27 @@ mod tests {
         assert_eq!(hosts[1].detail(), "公司 · root@10.0.0.1:22");
     }
 
+    #[test]
+    fn only_saved_ssh_hosts_are_offered_even_when_a_telnet_host_was_recent() {
+        let mut store = HostStore::empty();
+        let ssh = store.insert_unnotified(host("ssh", "10.0.0.1", None));
+        let telnet = store.insert_unnotified(HostDraft::telnet("telnet", "10.0.0.2", 23, None));
+        store.insert_unnotified(HostDraft::serial(
+            "serial",
+            "/dev/ttyUSB0",
+            super::super::SerialSettings::default(),
+            None,
+        ));
+        store.record_connection_unnotified(telnet);
+        assert_eq!(
+            quick_hosts(&store)
+                .iter()
+                .map(|host| host.id)
+                .collect::<Vec<_>>(),
+            [ssh]
+        );
+    }
+
     fn quick(id: u64, name: &str) -> QuickHost {
         QuickHost {
             id: HostId(id),
@@ -502,8 +514,6 @@ mod tests {
             endpoint: "deploy@172.16.1.166:22".into(),
             group: Some("公司 / CI".into()),
             notes: "构建服务器".into(),
-            os: None,
-            protocol: crate::host::ProtocolKind::Ssh,
         }
     }
 

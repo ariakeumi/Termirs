@@ -237,7 +237,7 @@ pub fn credential_details(credential: &Credential, store: &HostStore) -> Credent
             CredentialKind::Agent => CredentialKindChoice::Agent,
         },
         user: credential.user.to_string(),
-        // Where a key ShellRS keeps lies is as good as the key itself.
+        // Where a key Termirs keeps lies is as good as the key itself.
         key_path: credential
             .key_path
             .as_ref()
@@ -728,7 +728,7 @@ fn resolve_group(store: &HostStore, path: &str) -> Result<GroupPlan, CliError> {
 /// changes come without them.
 pub struct CredentialPlan {
     pub draft: CredentialDraft,
-    /// A pasted key, for ShellRS to keep in a file of its own; the draft's
+    /// A pasted key, for Termirs to keep in a file of its own; the draft's
     /// key path is a placeholder until it is written.
     pub private_key: Option<PastedKey>,
     pub password: SecretChange,
@@ -863,7 +863,7 @@ pub fn credential_fields(mut value: serde_json::Value) -> Result<CredentialField
         for key in ["id", "kept", "hosts", "password_saved", "passphrase_saved"] {
             object.remove(key);
         }
-        // `credentials show` prints `null` for a key ShellRS keeps.
+        // `credentials show` prints `null` for a key Termirs keeps.
         if object
             .get("key_path")
             .is_some_and(serde_json::Value::is_null)
@@ -1053,11 +1053,11 @@ mod tests {
         );
         assert_eq!(
             refused(group("生产/新的", &store)),
-            bad("有 2 个分组的路径都是「生产」：请先在 ShellRS 里给它们改名")
+            bad("有 2 个分组的路径都是「生产」：请先在 Termirs 里给它们改名")
         );
         assert_eq!(
             refused(group("生产", &store)),
-            bad("有 2 个分组的路径都是「生产」：请先在 ShellRS 里给它们改名")
+            bad("有 2 个分组的路径都是「生产」：请先在 Termirs 里给它们改名")
         );
         // Unchanged when left out, the top level for null.
         let plan = plan_host(HostFields::default(), Some(web), &store).unwrap();

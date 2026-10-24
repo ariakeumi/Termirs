@@ -76,7 +76,9 @@ async fn open_mutation_resource(
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, cx| window.click("tool-kubernetes", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-kubernetes", cx)
+    });
     reply(cx, handle, &factory, CONTEXTS).await;
     reply(cx, handle, &factory, NAMESPACES).await;
     reply(cx, handle, &factory, PODS).await;
@@ -578,7 +580,9 @@ async fn kubernetes_unused_or_failed_does_not_interrupt_terminal_input(cx: &mut 
         factory.written_text().contains('\t')
     })
     .await;
-    in_frame(cx, handle, |window, cx| window.click("tool-snippets", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-snippets", cx)
+    });
     cx.executor().advance_clock(Duration::from_secs(60));
     cx.run_until_parked();
     assert_eq!(
@@ -587,7 +591,9 @@ async fn kubernetes_unused_or_failed_does_not_interrupt_terminal_input(cx: &mut 
         "unused Kubernetes must issue no queries"
     );
 
-    in_frame(cx, handle, |window, cx| window.click("tool-kubernetes", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-kubernetes", cx)
+    });
     label(
         cx,
         handle,
@@ -605,7 +611,7 @@ async fn kubernetes_unused_or_failed_does_not_interrupt_terminal_input(cx: &mut 
         window.focus(&focus, cx);
         window.render_frame(cx);
         window.press("shift-tab", cx);
-        window.click("tool-kubernetes", cx);
+        toggle_tool(window, "tool-kubernetes", cx);
         window.press("enter", cx);
     });
     cx.wait_for(handle.into(), Duration::from_secs(5), |_, _| {
@@ -697,7 +703,9 @@ async fn kubernetes_relation_query_is_canceled_when_details_close(cx: &mut TestA
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, cx| window.click("tool-kubernetes", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-kubernetes", cx)
+    });
     reply(cx, handle, &factory, CONTEXTS).await;
     reply(cx, handle, &factory, NAMESPACES).await;
     reply(cx, handle, &factory, PODS).await;
@@ -816,7 +824,9 @@ async fn kubernetes_graph_container_opens_container_details_and_returns_to_pod(
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, cx| window.click("tool-kubernetes", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-kubernetes", cx)
+    });
     reply(cx, handle, &factory, CONTEXTS).await;
     reply(cx, handle, &factory, NAMESPACES).await;
     reply(cx, handle, &factory, PODS).await;
@@ -952,7 +962,9 @@ fn open_kubernetes(
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, cx| window.click("tool-kubernetes", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-kubernetes", cx)
+    });
     handle
 }
 
@@ -1108,7 +1120,9 @@ async fn kubernetes_node_metrics_are_on_demand_serial_and_stop_on_tab_change(
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, cx| window.click("tool-kubernetes", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-kubernetes", cx)
+    });
     reply(cx, handle, &factory, CONTEXTS).await;
     reply(cx, handle, &factory, NAMESPACES).await;
     reply(cx, handle, &factory, PODS).await;
@@ -1179,7 +1193,9 @@ async fn kubernetes_node_metrics_are_on_demand_serial_and_stop_on_tab_change(
     in_frame(cx, handle, |window, cx| {
         window.click("k8s-detail-close", cx)
     });
-    in_frame(cx, handle, |window, cx| window.click("tool-kubernetes", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-kubernetes", cx)
+    });
     let count = factory.commands.lock().unwrap().len();
     cx.executor().advance_clock(Duration::from_secs(60));
     cx.run_until_parked();
@@ -1318,7 +1334,9 @@ async fn kubernetes_sidebar_setting_hides_stops_and_reopens_the_tool(cx: &mut Te
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, cx| window.click("tool-kubernetes", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-kubernetes", cx)
+    });
     label(cx, handle, "k8s-count", "2 项资源 · 2 个命名空间").await;
     in_frame(cx, handle, |window, cx| {
         window.dispatch_action(Box::new(OpenSettings), cx)
@@ -1349,7 +1367,7 @@ async fn kubernetes_sidebar_setting_hides_stops_and_reopens_the_tool(cx: &mut Te
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
     in_frame(cx, handle, |window, cx| {
-        assert!(window.try_find("tool-kubernetes").is_none());
+        assert!(!tool_offered(window, "tool-kubernetes", cx));
         assert!(window.try_find("kubernetes").is_none());
         window.dispatch_action(Box::new(ToggleTool(ToolKind::Kubernetes)), cx);
         window.dispatch_action(Box::new(KubernetesAction(KubernetesCommand::Refresh)), cx);
@@ -1631,7 +1649,9 @@ async fn kubernetes_details_close_button_works_if_focus_returns_to_terminal(
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, cx| window.click("tool-kubernetes", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-kubernetes", cx)
+    });
     label(cx, handle, "k8s-count", "2 项资源 · 2 个命名空间").await;
     in_frame(cx, handle, |window, cx| {
         window.click("k8s-resource:pods:prod/api-0:open", cx)
@@ -1749,7 +1769,9 @@ async fn kubernetes_live_logs_are_serial_cancelable_and_copyable(cx: &mut TestAp
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, cx| window.click("tool-kubernetes", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-kubernetes", cx)
+    });
     reply(cx, handle, &factory, CONTEXTS).await;
     reply(cx, handle, &factory, NAMESPACES).await;
     reply(cx, handle, &factory, PODS).await;
@@ -1923,7 +1945,9 @@ async fn kubernetes_details_close_while_loading_but_not_on_backdrop(cx: &mut Tes
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, cx| window.click("tool-kubernetes", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-kubernetes", cx)
+    });
     reply(cx, handle, &factory, CONTEXTS).await;
     reply(cx, handle, &factory, NAMESPACES).await;
     reply(cx, handle, &factory, PODS).await;
@@ -1979,7 +2003,9 @@ async fn kubernetes_finishes_namespace_discovery_when_resource_type_changes(
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, cx| window.click("tool-kubernetes", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-kubernetes", cx)
+    });
     reply(cx, handle, &factory, CONTEXTS).await;
     cx.wait_for(handle.into(), Duration::from_secs(5), |_, _| {
         factory.pending.lock().unwrap().len() == 1
@@ -2017,7 +2043,9 @@ async fn kubernetes_rejects_old_scope_replies_and_explicitly_switches_context(
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, cx| window.click("tool-kubernetes", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-kubernetes", cx)
+    });
     reply(cx, handle, &factory, CONTEXTS).await;
     reply(cx, handle, &factory, NAMESPACES).await;
     reply(cx, handle, &factory, PODS).await;
@@ -2079,7 +2107,9 @@ async fn kubernetes_large_lists_retry_smaller_pages_and_show_first_page_early(
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, cx| window.click("tool-kubernetes", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-kubernetes", cx)
+    });
     reply(cx, handle, &factory, CONTEXTS).await;
     reply(cx, handle, &factory, NAMESPACES).await;
     reply(cx, handle, &factory, &"x".repeat(1 << 20)).await;

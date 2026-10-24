@@ -527,6 +527,7 @@ pub fn open_workspace_with_services(
             Workspace::new_with_services(
                 store,
                 cx.new(|_| settings_store()),
+                None,
                 remote,
                 fake_telnet_terminals(),
                 fake_serial_terminals(),

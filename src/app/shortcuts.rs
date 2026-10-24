@@ -85,7 +85,25 @@ macro_rules! shortcut {
 }
 
 /// The shortcuts of 设置 › 键盘快捷键, in the order the page lists them.
-pub static SHORTCUTS: [Shortcut; 29] = [
+pub static SHORTCUTS: [Shortcut; 33] = [
+    shortcut!(
+        "quick-open",
+        "app.shortcut.quick_open",
+        General,
+        &[],
+        "cmd-t",
+        "ctrl-shift-t",
+        QuickConnect
+    ),
+    shortcut!(
+        "show-hosts",
+        "app.shortcut.show_hosts",
+        General,
+        &[],
+        "cmd-shift-h",
+        "ctrl-shift-h",
+        ShowHosts
+    ),
     shortcut!(
         "new-host",
         "app.shortcut.new_host",
@@ -130,6 +148,15 @@ pub static SHORTCUTS: [Shortcut; 29] = [
         "cmd-alt-b",
         "ctrl-alt-b",
         ToggleToolSidebar
+    ),
+    shortcut!(
+        "toggle-sftp-sidebar",
+        "app.shortcut.toggle_sftp_sidebar",
+        General,
+        &[],
+        "cmd-p",
+        "ctrl-shift-p",
+        ToggleTool(ToolKind::Files)
     ),
     // ⌘↑ and ⌘↓ go to the top and bottom of a text field, and up a folder
     // and into one in SFTP. Elsewhere Win+↑ and Win+↓ are the system's own.
@@ -215,9 +242,18 @@ pub static SHORTCUTS: [Shortcut; 29] = [
         "app.shortcut.new_local_terminal",
         Tabs,
         &[],
-        "cmd-t",
+        "cmd-l",
         "ctrl-t",
         NewLocalTerminal
+    ),
+    shortcut!(
+        "open-sftp",
+        "app.shortcut.open_sftp",
+        Tabs,
+        &[],
+        "cmd-shift-p",
+        "ctrl-alt-p",
+        OpenActiveExplorer
     ),
     shortcut!(
         "close-tab",
@@ -228,13 +264,13 @@ pub static SHORTCUTS: [Shortcut; 29] = [
         "ctrl-w",
         CloseActiveTab
     ),
-    // macOS reports ⌘⇧] as ⌘}, as Safari and Terminal take it.
+    // Use the same tab-cycling keys on every platform.
     shortcut!(
         "next-tab",
         "app.shortcut.next_tab",
         Tabs,
         &[],
-        "cmd-}",
+        "ctrl-tab",
         "ctrl-tab",
         NextTab
     ),
@@ -243,7 +279,7 @@ pub static SHORTCUTS: [Shortcut; 29] = [
         "app.shortcut.previous_tab",
         Tabs,
         &[],
-        "cmd-{",
+        "ctrl-shift-tab",
         "ctrl-shift-tab",
         PreviousTab
     ),
@@ -735,6 +771,7 @@ pub fn apply_shortcuts(overrides: &ShortcutOverrides, cx: &mut App) {
     cx.bind_keys(key_bindings(overrides));
     super::system_hotkey::take(overrides.keys(system_wide()).as_deref(), cx);
     cx.set_global(AppliedShortcuts(overrides.clone()));
+    super::refresh_menus(cx);
 }
 
 /// Take 显示或隐藏 ShellRS's key from the system from now on, the one the
@@ -818,7 +855,18 @@ fn shell_keys_in_terminal(anywhere: &[KeyBinding]) -> Vec<KeyBinding> {
 }
 
 fn fixed_global_bindings() -> Vec<KeyBinding> {
-    vec![KeyBinding::new("shift-escape", ToggleZoom, None)]
+    let bindings = vec![KeyBinding::new("shift-escape", ToggleZoom, None)];
+    #[cfg(target_os = "macos")]
+    let bindings = bindings
+        .into_iter()
+        .chain([
+            KeyBinding::new("cmd-h", HideApp, None),
+            KeyBinding::new("cmd-alt-h", HideOtherApps, None),
+            KeyBinding::new("cmd-m", MinimizeWindow, None),
+            KeyBinding::new("ctrl-cmd-f", ToggleFullScreen, None),
+        ])
+        .collect();
+    bindings
 }
 
 fn fixed_context_bindings() -> Vec<KeyBinding> {
@@ -860,6 +908,9 @@ fn fixed_context_bindings() -> Vec<KeyBinding> {
             Some(CREDENTIAL_PANEL_CONTEXT),
         ),
         KeyBinding::new("down", SelectNextCredential, Some(CREDENTIAL_PANEL_CONTEXT)),
+        KeyBinding::new("up", SelectPreviousOpenTab, Some(OPEN_TABS_CONTEXT)),
+        KeyBinding::new("down", SelectNextOpenTab, Some(OPEN_TABS_CONTEXT)),
+        KeyBinding::new("enter", FocusActiveTab, Some(OPEN_TABS_CONTEXT)),
         KeyBinding::new(
             "escape",
             DismissTerminalFind,
@@ -868,6 +919,8 @@ fn fixed_context_bindings() -> Vec<KeyBinding> {
         // The 查找文件 window closes as a dialog would, and as a window does.
         KeyBinding::new("escape", CloseFindFiles, Some(FIND_FILES_CONTEXT)),
         KeyBinding::new(&primary("w"), CloseFindFiles, Some(FIND_FILES_CONTEXT)),
+        KeyBinding::new("escape", CloseHostManager, Some(HOST_MANAGER_CONTEXT)),
+        KeyBinding::new(&primary("w"), CloseHostManager, Some(HOST_MANAGER_CONTEXT)),
     ];
     bindings.extend(terminal_key_bindings());
     bindings.extend(file_list_key_bindings());
@@ -1191,6 +1244,36 @@ mod tests {
         );
         assert!(
             position(&bindings, "shellrs::ZoomTerminalIn") > position(&bindings, "shellrs::ZoomIn")
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn native_menu_shortcuts_keep_macos_window_conventions() {
+        let bindings = described(&key_bindings(&ShortcutOverrides::default()));
+        for (keys, action) in [
+            ("cmd-h", "shellrs::HideApp"),
+            ("cmd-alt-h", "shellrs::HideOtherApps"),
+            ("cmd-m", "shellrs::MinimizeWindow"),
+            ("ctrl-cmd-f", "shellrs::ToggleFullScreen"),
+            ("cmd-shift-h", "shellrs::ShowHosts"),
+        ] {
+            let key = super::Keystroke::parse(keys).unwrap().unparse();
+            let matches: Vec<_> = bindings
+                .iter()
+                .filter(|(bound, _, context)| *bound == key && context.is_none())
+                .collect();
+            assert_eq!(matches.len(), 1, "{keys} must have one command");
+            assert_eq!(matches[0].1, action);
+        }
+        assert_eq!(
+            super::check(
+                shortcut("new-host"),
+                &keys("cmd-h"),
+                &ShortcutOverrides::default(),
+                &super::fixed_global_bindings()
+            ),
+            Err(super::Refusal::Reserved)
         );
     }
 

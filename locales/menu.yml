@@ -1,0 +1,128 @@
+_version: 2
+
+app.menu.about:
+  zh-CN: 关于 Termirs…
+  en: About Termirs…
+app.menu.check_updates:
+  zh-CN: 检查更新
+  en: Check for updates
+app.menu.settings:
+  zh-CN: 设置…
+  en: Settings…
+app.menu.services:
+  zh-CN: 服务
+  en: Services
+app.menu.hide:
+  zh-CN: 隐藏 Termirs
+  en: Hide Termirs
+app.menu.hide_others:
+  zh-CN: 隐藏其他
+  en: Hide others
+app.menu.show_all:
+  zh-CN: 全部显示
+  en: Show all
+app.menu.quit:
+  zh-CN: 退出 Termirs
+  en: Quit Termirs
+app.menu.file:
+  zh-CN: 文件
+  en: File
+app.menu.new_host:
+  zh-CN: 新建主机…
+  en: New host…
+app.menu.new_group:
+  zh-CN: 新建分组…
+  en: New group…
+app.menu.new_local_terminal:
+  zh-CN: 新建本地终端
+  en: New local terminal
+app.menu.temporary_connection:
+  zh-CN: 临时连接…
+  en: Temporary connection…
+app.menu.quick_connect:
+  zh-CN: 快速打开…
+  en: Quick open…
+app.menu.import:
+  zh-CN: 导入主机
+  en: Import hosts
+app.menu.import_ssh_config:
+  zh-CN: 从 SSH 配置导入…
+  en: From SSH config…
+app.menu.import_known_hosts:
+  zh-CN: 从 known_hosts 导入…
+  en: From known_hosts…
+app.menu.save:
+  zh-CN: 保存
+  en: Save
+app.menu.close_tab:
+  zh-CN: 关闭标签
+  en: Close tab
+app.menu.edit:
+  zh-CN: 编辑
+  en: Edit
+app.menu.undo:
+  zh-CN: 撤销
+  en: Undo
+app.menu.redo:
+  zh-CN: 重做
+  en: Redo
+app.menu.cut:
+  zh-CN: 剪切
+  en: Cut
+app.menu.copy:
+  zh-CN: 复制
+  en: Copy
+app.menu.paste:
+  zh-CN: 粘贴
+  en: Paste
+app.menu.select_all:
+  zh-CN: 全选
+  en: Select all
+app.menu.view:
+  zh-CN: 显示
+  en: View
+app.menu.hosts:
+  zh-CN: 主机管理…
+  en: Host manager…
+app.menu.forwards:
+  zh-CN: 端口转发…
+  en: Port forwarding…
+app.menu.credentials:
+  zh-CN: 凭据…
+  en: Credentials…
+app.menu.toggle_theme:
+  zh-CN: 切换深浅色外观
+  en: Toggle light/dark appearance
+app.menu.terminal:
+  zh-CN: 终端
+  en: Terminal
+app.menu.find:
+  zh-CN: 查找…
+  en: Find…
+app.menu.window:
+  zh-CN: 窗口
+  en: Window
+app.menu.minimize:
+  zh-CN: 最小化
+  en: Minimize
+app.menu.zoom_window:
+  zh-CN: 缩放
+  en: Zoom
+app.menu.full_screen:
+  zh-CN: 切换全屏
+  en: Toggle full screen
+app.menu.main_window:
+  zh-CN: 显示 Termirs 主窗口
+  en: Show Termirs main window
+app.menu.help:
+  zh-CN: 帮助
+  en: Help
+app.menu.tools:
+  zh-CN: 工具
+  en: Tools
+app.menu.website:
+  zh-CN: Termirs 网站
+  en: Termirs website
+app.menu.changelog:
+  zh-CN: 更新日志
+  en: Changelog

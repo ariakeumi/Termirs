@@ -466,7 +466,7 @@ pub(crate) mod tests {
             seen[0]
                 .user_agent
                 .as_deref()
-                .is_some_and(|agent| agent.starts_with("ShellRS/")),
+                .is_some_and(|agent| agent.starts_with("Termirs/")),
             "{seen:?}"
         );
     }

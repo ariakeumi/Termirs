@@ -7,6 +7,7 @@ use gpui_kit::component::{
     dock::{BasePanel, Panel, PanelEvent, TabGroup},
     group_box::GroupBoxVariant,
     h_flex,
+    input::{Input, InputEvent, InputState},
     label::Label,
     menu::PopupMenu,
     separator::Separator,
@@ -21,9 +22,9 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::app::{
-    CatalogIcon, CenterTab, CheckForUpdates, CloseSettings, CopyAgentSkill, DownloadUpdate,
-    InstallAgentSkill, InstallCliCommand, OpenDownloadPage, OpenWebsite, RefreshCliIntegration,
-    RemoveAgentSkill, RemoveCliCommand, ShowUpdate,
+    CatalogIcon, CenterTab, CheckForUpdates, CopyAgentSkill, DownloadUpdate, InstallAgentSkill,
+    InstallCliCommand, OpenDownloadPage, OpenWebsite, RefreshCliIntegration, RemoveAgentSkill,
+    RemoveCliCommand, ShowUpdate,
 };
 use crate::cli::{AgentKind, BinaryStatus, CliIntegration, IntegrationStatus, SkillStatus};
 use crate::explorer::{FileIcon, FileIconKind};
@@ -72,6 +73,7 @@ pub struct SettingsPanel {
     shortcuts: Entity<ShortcutsEditor>,
     /// 终端 › 本地终端's field, with the shells installed here.
     local_shell: Entity<LocalShellEditor>,
+    local_tab_name: Entity<InputState>,
     /// The monospace families to choose the terminal font from; empty until
     /// the scan in the background comes back.
     font_families: &'static [SharedString],
@@ -81,7 +83,7 @@ pub struct SettingsPanel {
     shown_category: Rc<Cell<usize>>,
     focus_handle: FocusHandle,
     tab_group: Option<WeakEntity<TabGroup>>,
-    _subscriptions: [Subscription; 5],
+    _subscriptions: [Subscription; 6],
     _font_scan: Task<()>,
 }
 
@@ -96,8 +98,28 @@ impl SettingsPanel {
         let highlight_rules = cx.new(|cx| HighlightRulesEditor::new(store.clone(), window, cx));
         let shortcuts = cx.new(|cx| ShortcutsEditor::new(store.clone(), window, cx));
         let local_shell = cx.new(|cx| LocalShellEditor::new(store.clone(), window, cx));
+        let local_tab_name = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(t!("terminal.local.tab_title"))
+                .default_value(store.read(cx).settings().local_terminal.tab_name)
+        });
         let subscriptions = [
-            cx.observe(&store, |_, _, cx| cx.notify()),
+            cx.observe_in(&store, window, |this, store, window, cx| {
+                let name = store.read(cx).settings().local_terminal.tab_name;
+                if this.local_tab_name.read(cx).value().as_ref() != name {
+                    this.local_tab_name
+                        .update(cx, |input, cx| input.set_value(name, window, cx));
+                }
+                cx.notify();
+            }),
+            cx.subscribe(&local_tab_name, |this, input, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::Change) {
+                    let name = input.read(cx).value().to_string();
+                    this.store.update(cx, |store, cx| {
+                        store.update(|settings| settings.local_terminal.tab_name = name, cx)
+                    });
+                }
+            }),
             cx.observe(&shortcuts, |_, _, cx| cx.notify()),
             cx.observe(&local_shell, |_, _, cx| cx.notify()),
             cx.observe(&integration, |_, _, cx| cx.notify()),
@@ -122,6 +144,7 @@ impl SettingsPanel {
             highlight_rules,
             shortcuts,
             local_shell,
+            local_tab_name,
             font_families: &[],
             shown_category: Rc::default(),
             focus_handle: cx.focus_handle(),
@@ -187,7 +210,6 @@ impl Panel for SettingsPanel {
             Icon::new(CatalogIcon::Settings).small(),
             t!("settings.tab.title"),
         )
-        .closable("close-settings", Box::new(CloseSettings))
         .context_menu(move |menu, _, cx| tab_menu(menu, group.clone(), panel, cx))
     }
 
@@ -343,6 +365,19 @@ fn appearance_groups(panel: &SettingsPanel, _: &App) -> Vec<SettingGroup> {
                 )
                 .description(t!("settings.appearance.font_size_description"))
                 .keywords(keywords(t!("settings.appearance.font_size_keywords"))),
+                SettingItem::new(
+                    t!("settings.appearance.sidebar_font_size"),
+                    font_size_field(
+                        store,
+                        INTERFACE_FONT_SIZE_RANGE,
+                        |settings| settings.interface.sidebar_font_size,
+                        |settings, size| settings.interface.sidebar_font_size = size,
+                    ),
+                )
+                .description(t!("settings.appearance.sidebar_font_size_description"))
+                .keywords(keywords(t!(
+                    "settings.appearance.sidebar_font_size_keywords"
+                ))),
             ]),
         SettingGroup::new()
             .title(t!("settings.appearance.theme"))
@@ -428,13 +463,14 @@ fn terminal_groups(panel: &SettingsPanel, cx: &App) -> Vec<SettingGroup> {
     ]
 }
 
-/// 终端 → 本地终端: the program a local terminal runs, and whether 项目's
-/// terminals keep their output. The shell's row stacks, so a path with its
-/// arguments has the page's width.
+/// 终端 → 本地终端: its tab label, shell and kept output. Text fields stack
+/// under their labels so names and commands have the page's width.
 fn local_terminal_group(panel: &SettingsPanel) -> SettingGroup {
     let (editor, reset) = (panel.local_shell.clone(), panel.local_shell.clone());
     let store = panel.store.clone();
     let (reader, writer) = (panel.store.clone(), panel.store.clone());
+    let input = panel.local_tab_name.clone();
+    let (name_reader, name_writer) = (panel.store.clone(), panel.store.clone());
     SettingGroup::new()
         .title(t!("settings.local_terminal.title"))
         .items([
@@ -451,6 +487,34 @@ fn local_terminal_group(panel: &SettingsPanel) -> SettingGroup {
             .description(t!("settings.local_terminal.shell_description"))
             .layout(Axis::Vertical)
             .keywords(keywords(t!("settings.local_terminal.keywords"))),
+            SettingItem::new(
+                t!("settings.local_terminal.tab_name"),
+                SettingField::render(move |options, _, _| {
+                    Input::new(&input)
+                        .id("local-terminal-tab-name")
+                        .aria_label(t!("settings.local_terminal.tab_name"))
+                        .with_size(options.size())
+                        .w_full()
+                })
+                .on_reset(
+                    move |cx| {
+                        !name_reader
+                            .read(cx)
+                            .settings()
+                            .local_terminal
+                            .tab_name
+                            .is_empty()
+                    },
+                    move |_, cx| {
+                        name_writer.update(cx, |store, cx| {
+                            store.update(|settings| settings.local_terminal.tab_name.clear(), cx)
+                        });
+                    },
+                ),
+            )
+            .description(t!("settings.local_terminal.tab_name_description"))
+            .layout(Axis::Vertical)
+            .keywords(keywords(t!("settings.local_terminal.tab_name_keywords"))),
             SettingItem::new(
                 t!("settings.local_terminal.keep_output"),
                 SettingField::switch(
@@ -764,7 +828,7 @@ fn shortcuts_groups(panel: &SettingsPanel, _: &App) -> Vec<SettingGroup> {
     shortcut_groups(&panel.shortcuts)
 }
 
-/// 应用 → 窗口: what the next launch restores of the main window.
+/// 应用: the next launch's window and initial terminal.
 fn application_groups(panel: &SettingsPanel, _: &App) -> Vec<SettingGroup> {
     let store = &panel.store;
     let switch = |read: fn(&WindowSettings) -> bool, write: fn(&mut WindowSettings, bool)| {
@@ -779,6 +843,7 @@ fn application_groups(panel: &SettingsPanel, _: &App) -> Vec<SettingGroup> {
         )
         .default_value(true)
     };
+    let (reader, writer) = (store.clone(), store.clone());
     vec![
         SettingGroup::new()
             .title(t!("settings.window.title"))
@@ -800,6 +865,23 @@ fn application_groups(panel: &SettingsPanel, _: &App) -> Vec<SettingGroup> {
                 )
                 .description(t!("settings.window.remember_position_description")),
             ]),
+        SettingGroup::new()
+            .title(t!("settings.startup.title"))
+            .items([SettingItem::new(
+                t!("settings.startup.local_terminal"),
+                SettingField::switch(
+                    move |cx| reader.read(cx).settings().open_local_terminal_on_startup,
+                    move |on, cx| {
+                        writer.update(cx, |store, cx| {
+                            store
+                                .update(|settings| settings.open_local_terminal_on_startup = on, cx)
+                        });
+                    },
+                )
+                .default_value(false),
+            )
+            .description(t!("settings.startup.local_terminal_description"))
+            .keywords(keywords(t!("settings.startup.keywords")))]),
     ]
 }
 
@@ -904,7 +986,7 @@ fn about_groups(panel: &SettingsPanel, cx: &App) -> Vec<SettingGroup> {
             )
             .description(t!("settings.about.analytics_description"))]),
         SettingGroup::new()
-            .title("ShellRS")
+            .title("Termirs")
             .items([SettingItem::new(
                 t!("settings.about.website"),
                 SettingField::render(|options, _, _| {

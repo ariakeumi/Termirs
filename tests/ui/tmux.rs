@@ -42,7 +42,9 @@ fn open_tmux(cx: &mut TestAppContext, factory: Arc<FakeTerminalFactory>) -> Wind
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, cx| window.click("tool-tmux", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-tmux", cx)
+    });
     handle
 }
 

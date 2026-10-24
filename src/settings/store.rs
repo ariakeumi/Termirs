@@ -137,7 +137,85 @@ mod tests {
     use std::fs;
 
     use super::{SettingsProblem, SettingsStore};
-    use crate::settings::{AppSettings, Appearance, InterfaceLanguage};
+    use crate::settings::{AppSettings, Appearance, InterfaceLanguage, SidebarWidths};
+
+    #[test]
+    fn local_terminal_tab_names_load_from_old_settings_and_survive_reload() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        fs::write(&path, r#"{"local_terminal":{"shell":"/bin/bash"}}"#).unwrap();
+        let (mut store, problem) = SettingsStore::load(path.clone());
+        assert!(problem.is_none());
+        assert!(store.settings().local_terminal.tab_name.is_empty());
+        assert!(matches!(
+            store.update_unnotified(|settings| {
+                settings.local_terminal.tab_name = "开发终端".into();
+            }),
+            Some(Ok(()))
+        ));
+        let (mut store, problem) = SettingsStore::load(path.clone());
+        assert!(problem.is_none());
+        assert_eq!(store.settings().local_terminal.tab_name, "开发终端");
+        assert_eq!(
+            store.settings().local_terminal.shell.as_deref(),
+            Some("/bin/bash")
+        );
+        store
+            .update_unnotified(|settings| settings.local_terminal.tab_name.clear())
+            .unwrap()
+            .unwrap();
+        let (store, problem) = SettingsStore::load(path);
+        assert!(problem.is_none());
+        assert!(store.settings().local_terminal.tab_name.is_empty());
+    }
+
+    #[test]
+    fn sidebar_font_size_is_independent_and_survives_reload() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        fs::write(&path, r#"{"interface":{"font_size":14}}"#).unwrap();
+        let (mut store, problem) = SettingsStore::load(path.clone());
+        assert!(problem.is_none());
+        assert_eq!(store.settings().interface.sidebar_font_size, 16.);
+        assert!(matches!(
+            store.update_unnotified(|settings| settings.interface.sidebar_font_size = 18.),
+            Some(Ok(()))
+        ));
+        let (store, problem) = SettingsStore::load(path.clone());
+        assert!(problem.is_none());
+        assert_eq!(store.settings().interface.font_size, 14.);
+        assert_eq!(store.settings().interface.sidebar_font_size, 18.);
+        fs::write(&path, r#"{"interface":{"sidebar_font_size":100}}"#).unwrap();
+        let (store, problem) = SettingsStore::load(path);
+        assert!(problem.is_none());
+        assert_eq!(store.settings().interface.sidebar_font_size, 20.);
+    }
+
+    #[test]
+    fn sidebar_widths_load_defaults_and_normalize_invalid_sizes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        for (json, expected) in [
+            (r#"{}"#, SidebarWidths::default()),
+            (
+                r#"{"sidebar_widths":{"left":410,"right":460}}"#,
+                SidebarWidths::new(410., 460.),
+            ),
+            (
+                r#"{"sidebar_widths":{"left":-20,"right":0}}"#,
+                SidebarWidths::new(100., 320.),
+            ),
+        ] {
+            fs::write(&path, json).unwrap();
+            let (store, problem) = SettingsStore::load(path.clone());
+            assert!(problem.is_none());
+            assert_eq!(store.settings().sidebar_widths, expected);
+        }
+        assert_eq!(
+            SidebarWidths::new(f32::NAN, f32::INFINITY),
+            SidebarWidths::default()
+        );
+    }
 
     #[test]
     fn a_first_start_has_the_defaults_and_writes_nothing() {

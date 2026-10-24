@@ -8,14 +8,12 @@ use gpui_kit::component::{
 };
 
 #[gpui_kit::test]
-fn tab_close_button_closes_the_terminal_and_disconnects(cx: &mut TestAppContext) {
+fn close_command_closes_the_terminal_and_disconnects(cx: &mut TestAppContext) {
     let (handle, workspace) = open_workspace(cx);
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        window
-            .within("host-tree")
-            .double_click(("host-row", DB_01), cx);
+        window.dispatch_action(Box::new(ConnectHost(HostId(DB_01))), cx);
     })
     .unwrap();
     cx.run_until_parked();
@@ -23,7 +21,12 @@ fn tab_close_button_closes_the_terminal_and_disconnects(cx: &mut TestAppContext)
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
         assert!(window.find(("terminal", FIRST_NEW_TERMINAL)).visible());
-        window.click(("close-terminal", FIRST_NEW_TERMINAL), cx);
+        window.dispatch_action(
+            Box::new(shellrs::app::CloseTerminal(RemoteTerminalId(
+                FIRST_NEW_TERMINAL,
+            ))),
+            cx,
+        );
     })
     .unwrap();
     cx.run_until_parked();
@@ -39,7 +42,7 @@ fn tab_close_button_closes_the_terminal_and_disconnects(cx: &mut TestAppContext)
         // The other seeded tabs are untouched.
         assert!(
             window
-                .find(("close-terminal", INITIAL_WEB_TERMINAL))
+                .find(("terminal-tab", INITIAL_WEB_TERMINAL))
                 .visible()
         );
     })
@@ -60,7 +63,12 @@ async fn closing_every_tab_shows_the_recent_hosts(cx: &mut TestAppContext) {
         window.render_frame(cx);
         // While tabs are open the start page stays out of the way.
         assert!(window.try_find("recent-hosts").is_none());
-        window.click(("close-terminal", INITIAL_WEB_TERMINAL), cx);
+        window.dispatch_action(
+            Box::new(shellrs::app::CloseTerminal(RemoteTerminalId(
+                INITIAL_WEB_TERMINAL,
+            ))),
+            cx,
+        );
     })
     .unwrap();
     cx.run_until_parked();
@@ -74,7 +82,12 @@ async fn closing_every_tab_shows_the_recent_hosts(cx: &mut TestAppContext) {
         );
         assert!(window.try_find("recent-hosts").is_none());
         // The last tab closes too (the tab group alone would refuse).
-        window.click(("close-terminal", INITIAL_STAGING_TERMINAL), cx);
+        window.dispatch_action(
+            Box::new(shellrs::app::CloseTerminal(RemoteTerminalId(
+                INITIAL_STAGING_TERMINAL,
+            ))),
+            cx,
+        );
     })
     .unwrap();
     cx.run_until_parked();
@@ -92,7 +105,7 @@ async fn closing_every_tab_shows_the_recent_hosts(cx: &mut TestAppContext) {
         // Both hosts had been connected, so both are listed.
         assert!(window.find(("recent-host", WEB_01)).visible());
         assert!(window.find(("recent-host", STAGING_API)).visible());
-        assert_eq!(window.find("status-connection").label(), Some("未连接"));
+        assert_eq!(active_connection_state(&workspace, cx), None);
 
         window.click(("recent-host", WEB_01), cx);
     })
@@ -110,7 +123,7 @@ async fn closing_every_tab_shows_the_recent_hosts(cx: &mut TestAppContext) {
 
     cx.wait_for(handle.into(), Duration::from_secs(2), |window, cx| {
         window.render_frame(cx);
-        window.find("status-connection").label() == Some("已连接 web-01")
+        active_connection_state(&workspace, cx) == Some(ConnectionState::Connected)
     })
     .await;
 
@@ -119,8 +132,8 @@ async fn closing_every_tab_shows_the_recent_hosts(cx: &mut TestAppContext) {
         assert!(window.find(("terminal", FIRST_NEW_TERMINAL)).visible());
         assert!(window.try_find("recent-hosts").is_none());
         assert_eq!(
-            window.find("status-connection").label(),
-            Some("已连接 web-01")
+            active_connection_state(&workspace, cx),
+            Some(ConnectionState::Connected)
         );
     })
     .unwrap();
@@ -137,7 +150,12 @@ async fn closing_every_tab_shows_the_recent_hosts(cx: &mut TestAppContext) {
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        window.click(("close-terminal", FIRST_NEW_TERMINAL), cx);
+        window.dispatch_action(
+            Box::new(shellrs::app::CloseTerminal(RemoteTerminalId(
+                FIRST_NEW_TERMINAL,
+            ))),
+            cx,
+        );
     })
     .unwrap();
     cx.run_until_parked();
@@ -164,16 +182,26 @@ async fn closing_every_tab_shows_the_recent_hosts(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 async fn enter_connects_the_selected_recent_host(cx: &mut TestAppContext) {
-    let (handle, _) = open_workspace(cx);
+    let (handle, workspace) = open_workspace(cx);
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        window.click(("close-terminal", INITIAL_WEB_TERMINAL), cx);
+        window.dispatch_action(
+            Box::new(shellrs::app::CloseTerminal(RemoteTerminalId(
+                INITIAL_WEB_TERMINAL,
+            ))),
+            cx,
+        );
     })
     .unwrap();
     cx.run_until_parked();
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        window.click(("close-terminal", INITIAL_STAGING_TERMINAL), cx);
+        window.dispatch_action(
+            Box::new(shellrs::app::CloseTerminal(RemoteTerminalId(
+                INITIAL_STAGING_TERMINAL,
+            ))),
+            cx,
+        );
     })
     .unwrap();
     cx.run_until_parked();
@@ -194,7 +222,7 @@ async fn enter_connects_the_selected_recent_host(cx: &mut TestAppContext) {
 
     cx.wait_for(handle.into(), Duration::from_secs(2), |window, cx| {
         window.render_frame(cx);
-        window.find("status-connection").label() == Some("已连接 staging-api")
+        active_connection_state(&workspace, cx) == Some(ConnectionState::Connected)
     })
     .await;
 }
@@ -272,7 +300,10 @@ async fn recent_host_menu_commands_work_from_the_start_page(cx: &mut TestAppCont
     for terminal in [INITIAL_WEB_TERMINAL, INITIAL_STAGING_TERMINAL] {
         cx.update_window(handle.into(), |_, window, cx| {
             window.render_frame(cx);
-            window.click(("close-terminal", terminal), cx);
+            window.dispatch_action(
+                Box::new(shellrs::app::CloseTerminal(RemoteTerminalId(terminal))),
+                cx,
+            );
         })
         .unwrap();
         cx.run_until_parked();
@@ -328,9 +359,7 @@ fn close_shortcut_closes_the_displayed_tab_down_to_none(cx: &mut TestAppContext)
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        window
-            .within("host-tree")
-            .double_click(("host-row", DB_01), cx);
+        window.dispatch_action(Box::new(ConnectHost(HostId(DB_01))), cx);
     })
     .unwrap();
     cx.run_until_parked();
@@ -397,9 +426,7 @@ fn both_tabs_of_one_host_stay_closable(cx: &mut TestAppContext) {
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        window
-            .within("host-tree")
-            .double_click(("host-row", DB_01), cx);
+        window.dispatch_action(Box::new(ConnectHost(HostId(DB_01))), cx);
     })
     .unwrap();
     cx.run_until_parked();
@@ -408,7 +435,7 @@ fn both_tabs_of_one_host_stay_closable(cx: &mut TestAppContext) {
     // for the same host beside it and activates that one.
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        window.click(("sftp", FIRST_NEW_TERMINAL), cx);
+        window.dispatch_action(Box::new(OpenExplorer(HostId(DB_01))), cx);
     })
     .unwrap();
     cx.run_until_parked();
@@ -416,7 +443,10 @@ fn both_tabs_of_one_host_stay_closable(cx: &mut TestAppContext) {
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
         assert!(window.find(("explorer", SFTP_TAB)).visible());
-        window.click(("close-explorer", SFTP_TAB), cx);
+        window.dispatch_action(
+            Box::new(shellrs::app::CloseExplorer(ExplorerId(SFTP_TAB))),
+            cx,
+        );
     })
     .unwrap();
     cx.run_until_parked();
@@ -426,7 +456,12 @@ fn both_tabs_of_one_host_stay_closable(cx: &mut TestAppContext) {
         window.render_frame(cx);
         assert!(window.try_find(("close-explorer", SFTP_TAB)).is_none());
         assert!(window.find(("terminal", FIRST_NEW_TERMINAL)).visible());
-        window.click(("close-terminal", FIRST_NEW_TERMINAL), cx);
+        window.dispatch_action(
+            Box::new(shellrs::app::CloseTerminal(RemoteTerminalId(
+                FIRST_NEW_TERMINAL,
+            ))),
+            cx,
+        );
     })
     .unwrap();
     cx.run_until_parked();
@@ -448,38 +483,21 @@ fn both_tabs_of_one_host_stay_closable(cx: &mut TestAppContext) {
     });
 }
 
-/// Double-clicking a tab's title shows or hides the host sidebar; a
-/// single click only selects the tab.
+/// Repeated clicks select the tab while keeping its navigation visible.
 #[gpui_kit::test]
-async fn double_clicking_a_tab_toggles_the_host_sidebar(cx: &mut TestAppContext) {
+fn double_clicking_a_sidebar_tab_keeps_the_list_visible(cx: &mut TestAppContext) {
     let (handle, _) = open_workspace(cx);
-    cx.run_until_parked();
-    let sidebar_shown = |cx: &mut TestAppContext| {
-        cx.update_window(handle.into(), |_, window, cx| {
-            window.render_frame(cx);
+    in_frame(cx, handle, |window, cx| {
+        window.double_click(("terminal-tab", INITIAL_STAGING_TERMINAL), cx);
+    });
+    in_frame(cx, handle, |window, _| {
+        assert!(window.find("open-tabs").visible());
+        assert!(
             window
-                .try_find("host-search")
-                .is_some_and(|search| search.visible())
-        })
-        .unwrap()
-    };
-    assert!(sidebar_shown(cx));
-    for shown in [false, true] {
-        cx.update_window(handle.into(), |_, window, cx| {
-            window.render_frame(cx);
-            window.double_click(("terminal-tab", INITIAL_WEB_TERMINAL), cx);
-        })
-        .unwrap();
-        cx.run_until_parked();
-        assert_eq!(sidebar_shown(cx), shown);
-    }
-    cx.update_window(handle.into(), |_, window, cx| {
-        window.render_frame(cx);
-        window.click(("terminal-tab", INITIAL_STAGING_TERMINAL), cx);
-    })
-    .unwrap();
-    cx.run_until_parked();
-    assert!(sidebar_shown(cx));
+                .find(("terminal", INITIAL_STAGING_TERMINAL))
+                .visible()
+        );
+    });
 }
 
 #[gpui_kit::test]
@@ -487,16 +505,14 @@ async fn a_terminal_tab_can_be_renamed_and_follow_the_host_again(cx: &mut TestAp
     let (handle, workspace) = open_workspace(cx);
     let tab = ("terminal-tab", INITIAL_WEB_TERMINAL);
 
-    // Undetected hosts show the fallback mark in the tab too, in colour once
-    // the terminal is up.
-    cx.wait_for(handle.into(), Duration::from_secs(2), |window, cx| {
-        window.render_frame(cx);
-        window
-            .find(("terminal-tab-os", INITIAL_WEB_TERMINAL))
-            .label()
-            == Some("未探测到系统")
-    })
-    .await;
+    in_frame(cx, handle, |window, _| {
+        assert!(window.find(tab).visible());
+        assert!(
+            window
+                .try_find(("terminal-tab-os", INITIAL_WEB_TERMINAL))
+                .is_none()
+        );
+    });
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
         assert_eq!(window.find(tab).label(), Some("web-01"));
@@ -546,7 +562,7 @@ async fn a_terminal_tab_can_be_renamed_and_follow_the_host_again(cx: &mut TestAp
         window.render_frame(cx);
         // A closed dialog leaves nothing focused, and an action only reaches
         // handlers on the focused element's path.
-        window.click("host-search", cx);
+        window.click(("terminal", INITIAL_WEB_TERMINAL), cx);
         window.dispatch_action(
             Box::new(RenameTerminal(RemoteTerminalId(INITIAL_WEB_TERMINAL))),
             cx,
@@ -648,7 +664,9 @@ fn batch_close_commands_take_the_tabs_around_the_clicked_one(cx: &mut TestAppCon
 }
 
 #[gpui_kit::test]
-async fn the_start_page_marks_recent_hosts_with_their_operating_system(cx: &mut TestAppContext) {
+async fn the_start_page_shows_recent_hosts_without_operating_system_badges(
+    cx: &mut TestAppContext,
+) {
     let mut store = HostStore::empty();
     let id = store.insert_unnotified(HostDraft::new(
         "web-01",
@@ -667,11 +685,8 @@ async fn the_start_page_marks_recent_hosts_with_their_operating_system(cx: &mut 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
         assert!(window.find("recent-hosts").visible());
-        assert_eq!(
-            window.find(("recent-host-os", id.0)).label(),
-            Some("Ubuntu"),
-            "开始页和主机树用同一个标记"
-        );
+        assert!(window.find(("recent-host", id.0)).visible());
+        assert!(window.try_find(("recent-host-os", id.0)).is_none());
     })
     .unwrap();
 }
@@ -679,21 +694,27 @@ async fn the_start_page_marks_recent_hosts_with_their_operating_system(cx: &mut 
 /// 命令片段 beside web-01's terminal, where its dialogs open from.
 fn show_snippets(cx: &mut TestAppContext, handle: WindowHandle<Root>) {
     in_frame(cx, handle, |window, cx| {
+        window.dispatch_action(Box::new(shellrs::app::ShowTabs), cx)
+    });
+    in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, cx| window.click("tool-snippets", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-snippets", cx)
+    });
 }
 
 /// A dialog holds what was typed into it: a click beside it does not close
 /// it, Escape (like its buttons) does.
 #[gpui_kit::test]
 async fn a_click_beside_a_dialog_does_not_close_it(cx: &mut TestAppContext) {
-    let (handle, _) = open_workspace_with_forwards(
+    let (main, workspace) = open_workspace_with_forwards(
         cx,
         HostStore::seed(),
         Arc::new(FakeForwardProvider::default()),
     );
     cx.run_until_parked();
+    let manager = open_host_manager(cx, main, &workspace);
 
     for (open, field) in [
         ("new-host-panel", "host-name"),
@@ -704,6 +725,14 @@ async fn a_click_beside_a_dialog_does_not_close_it(cx: &mut TestAppContext) {
         ("snippets-new", "snippet-name"),
         ("snippets-new-category", "snippet-category-name"),
     ] {
+        let handle = if matches!(
+            open,
+            "new-host-panel" | "new-group" | "new-forward" | "new-credential"
+        ) {
+            manager
+        } else {
+            main
+        };
         if open == "new-forward" {
             show_forwards(cx, handle).await;
         }
@@ -713,14 +742,32 @@ async fn a_click_beside_a_dialog_does_not_close_it(cx: &mut TestAppContext) {
         if open == "snippets-new" {
             show_snippets(cx, handle);
         }
-        in_frame(cx, handle, |window, cx| window.click(open, cx));
+        in_frame(cx, handle, |window, cx| {
+            if open == "temporary-connection" {
+                window.dispatch_action(Box::new(shellrs::app::NewTemporaryConnection), cx);
+            } else {
+                window.click(open, cx);
+            }
+        });
         in_frame(cx, handle, |window, cx| {
             window.click(field, cx);
             window.input("typed", cx);
         });
-        // The status bar is outside the dialog, under its backdrop.
+        // The window edge is outside the dialog, under its backdrop.
         in_frame(cx, handle, |window, cx| {
-            window.click("status-connection", cx)
+            let bounds = window
+                .find(if handle == manager {
+                    "host-manager"
+                } else {
+                    "workspace"
+                })
+                .bounds();
+            click_at(
+                window,
+                point(bounds.left() + px(4.), bounds.bottom() - px(4.)),
+                gpui_kit::Modifiers::none(),
+                cx,
+            );
         });
         in_frame(cx, handle, |window, cx| {
             assert!(
@@ -742,12 +789,13 @@ async fn a_click_beside_a_dialog_does_not_close_it(cx: &mut TestAppContext) {
 /// closes.
 #[gpui_kit::test]
 async fn a_dialog_says_what_is_wrong_in_a_notification_that_goes_with_it(cx: &mut TestAppContext) {
-    let (handle, _) = open_workspace_with_forwards(
+    let (main, workspace) = open_workspace_with_forwards(
         cx,
         HostStore::seed(),
         Arc::new(FakeForwardProvider::default()),
     );
     cx.run_until_parked();
+    let manager = open_host_manager(cx, main, &workspace);
 
     for (open, field, error) in [
         ("new-host-panel", "host-address", "请输入地址"),
@@ -762,6 +810,14 @@ async fn a_dialog_says_what_is_wrong_in_a_notification_that_goes_with_it(cx: &mu
             "请输入分类名称",
         ),
     ] {
+        let handle = if matches!(
+            open,
+            "new-host-panel" | "new-group" | "new-forward" | "new-credential"
+        ) {
+            manager
+        } else {
+            main
+        };
         if open == "new-forward" {
             show_forwards(cx, handle).await;
         }
@@ -771,7 +827,13 @@ async fn a_dialog_says_what_is_wrong_in_a_notification_that_goes_with_it(cx: &mu
         if open == "snippets-new" {
             show_snippets(cx, handle);
         }
-        in_frame(cx, handle, |window, cx| window.click(open, cx));
+        in_frame(cx, handle, |window, cx| {
+            if open == "temporary-connection" {
+                window.dispatch_action(Box::new(shellrs::app::NewTemporaryConnection), cx);
+            } else {
+                window.click(open, cx);
+            }
+        });
         in_frame(cx, handle, |window, cx| {
             window.click(field, cx);
             window.click("commit", cx);
@@ -812,6 +874,7 @@ fn a_problem_found_while_the_window_is_built_is_shown_once_it_is_open(cx: &mut T
             Workspace::new_with_services(
                 store,
                 cx.new(|_| settings_store()),
+                None,
                 remote,
                 fake_telnet_terminals(),
                 fake_serial_terminals(),
@@ -836,7 +899,7 @@ fn a_problem_found_while_the_window_is_built_is_shown_once_it_is_open(cx: &mut T
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
         assert_eq!(window.notifications(cx).len(), 1);
-        assert!(window.find("host-search").visible());
+        assert!(window.try_find("show-hosts").is_none());
     })
     .unwrap();
 }
@@ -848,39 +911,50 @@ fn the_tool_switch_shows_a_tool_and_hides_it_again(cx: &mut TestAppContext) {
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
     let sidebar = ("tool-sidebar", INITIAL_WEB_TERMINAL);
-    in_frame(cx, handle, |window, _| {
+    in_frame(cx, handle, |window, cx| {
         // Hidden at first: the switch is there, none of it pressed.
         assert!(window.try_find(sidebar).is_none());
-        assert_eq!(window.find("tool-snippets").checked(), Some(false));
+        assert_eq!(tool_checked(window, "tool-snippets", cx), Some(false));
     });
 
-    in_frame(cx, handle, |window, cx| window.click("tool-snippets", cx));
-    in_frame(cx, handle, |window, _| {
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-snippets", cx)
+    });
+    in_frame(cx, handle, |window, cx| {
         assert_eq!(window.find(sidebar).label(), Some("命令片段"));
         assert!(window.find("snippets").visible());
-        assert_eq!(window.find("tool-snippets").checked(), Some(true));
-        // Between the center and the switch.
+        assert_eq!(tool_checked(window, "tool-snippets", cx), Some(true));
         let bounds = window.find(sidebar).bounds();
-        let switch = window.find("tool-switch").bounds();
-        assert!(bounds.right() <= switch.left(), "{bounds:?} {switch:?}");
+        if cfg!(target_os = "macos") {
+            assert!(window.try_find("tool-switch").is_none());
+            assert!(window.try_find("tool-snippets").is_none());
+            assert_eq!(bounds.right(), window.find("workspace").bounds().right());
+        } else {
+            let switch = window.find("tool-switch").bounds();
+            assert!(bounds.right() <= switch.left(), "{bounds:?} {switch:?}");
+        }
         // The switch is the sidebar's only control: no collapse button in
         // the center's tab bar.
         assert!(window.try_find("toggle-dock:Right").is_none());
     });
 
     // Another tool takes its place.
-    in_frame(cx, handle, |window, cx| window.click("tool-docker", cx));
-    in_frame(cx, handle, |window, _| {
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-docker", cx)
+    });
+    in_frame(cx, handle, |window, cx| {
         assert_eq!(window.find(sidebar).label(), Some("Docker"));
-        assert_eq!(window.find("tool-snippets").checked(), Some(false));
-        assert_eq!(window.find("tool-docker").checked(), Some(true));
+        assert_eq!(tool_checked(window, "tool-snippets", cx), Some(false));
+        assert_eq!(tool_checked(window, "tool-docker", cx), Some(true));
     });
 
     // The tool showing hides the sidebar.
-    in_frame(cx, handle, |window, cx| window.click("tool-docker", cx));
-    in_frame(cx, handle, |window, _| {
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-docker", cx)
+    });
+    in_frame(cx, handle, |window, cx| {
         assert!(window.try_find(sidebar).is_none());
-        assert_eq!(window.find("tool-docker").checked(), Some(false));
+        assert_eq!(tool_checked(window, "tool-docker", cx), Some(false));
     });
 
     // The shortcut brings back the tool shown last.
@@ -899,7 +973,9 @@ fn a_tool_follows_the_terminal_in_front_and_leaves_it_the_keyboard(cx: &mut Test
         window.activate_window();
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx);
     });
-    in_frame(cx, handle, |window, cx| window.click("tool-snippets", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-snippets", cx)
+    });
     in_frame(cx, handle, |window, _| {
         assert!(
             window
@@ -917,7 +993,9 @@ fn a_tool_follows_the_terminal_in_front_and_leaves_it_the_keyboard(cx: &mut Test
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_STAGING_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, cx| window.click("tool-snippets", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-snippets", cx)
+    });
     let sidebar = ("tool-sidebar", INITIAL_STAGING_TERMINAL);
     in_frame(cx, handle, |window, _| {
         assert!(window.try_find(sidebar).is_some());
@@ -932,7 +1010,9 @@ fn a_tool_follows_the_terminal_in_front_and_leaves_it_the_keyboard(cx: &mut Test
     in_frame(cx, handle, |window, _| {
         assert_eq!(window.find(sidebar).focused(), Some(true));
     });
-    in_frame(cx, handle, |window, cx| window.click("tool-snippets", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-snippets", cx)
+    });
     in_frame(cx, handle, |window, _| {
         assert!(window.try_find(sidebar).is_none());
         assert_eq!(
@@ -951,10 +1031,12 @@ async fn the_tool_sidebar_goes_with_terminals_only(cx: &mut TestAppContext) {
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, cx| window.click("tool-snippets", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-snippets", cx)
+    });
     let shown = |cx: &mut TestAppContext| {
-        in_frame(cx, handle, |window, _| {
-            let switch = window.try_find("tool-switch").is_some();
+        in_frame(cx, handle, |window, cx| {
+            let switch = has_tool_commands(window, cx);
             let sidebar = [INITIAL_WEB_TERMINAL, INITIAL_STAGING_TERMINAL]
                 .into_iter()
                 .any(|id| window.try_find(("tool-sidebar", id)).is_some());
@@ -978,30 +1060,30 @@ async fn the_tool_sidebar_goes_with_terminals_only(cx: &mut TestAppContext) {
         window.dispatch_action(Box::new(NewLocalTerminal), cx)
     });
     assert_eq!(shown(cx), (true, false));
-    in_frame(cx, handle, |window, _| {
-        assert!(window.try_find("tool-projects").is_some());
-        assert!(window.try_find("tool-snippets").is_none());
+    in_frame(cx, handle, |window, cx| {
+        assert!(tool_offered(window, "tool-projects", cx));
+        assert!(!tool_offered(window, "tool-snippets", cx));
         assert!(window.try_find(("tool-sidebar-local", 1_u64)).is_none());
     });
     in_frame(cx, handle, |window, cx| {
         window.dispatch_action(Box::new(ToggleToolSidebar), cx)
     });
-    in_frame(cx, handle, |window, _| {
+    in_frame(cx, handle, |window, cx| {
         assert_eq!(
             window.find(("tool-sidebar-local", 1_u64)).label(),
             Some("项目")
         );
-        assert_eq!(window.find("tool-projects").checked(), Some(true));
+        assert_eq!(tool_checked(window, "tool-projects", cx), Some(true));
     });
 
     // Its host's terminal brings it back as it was.
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, _| {
+    in_frame(cx, handle, |window, cx| {
         let sidebar = window.find(("tool-sidebar", INITIAL_WEB_TERMINAL));
         assert_eq!(sidebar.label(), Some("命令片段"));
-        assert_eq!(window.find("tool-snippets").checked(), Some(true));
+        assert_eq!(tool_checked(window, "tool-snippets", cx), Some(true));
     });
 }
 
@@ -1019,7 +1101,7 @@ fn each_host_keeps_its_own_tool_sidebar(cx: &mut TestAppContext) {
         })
     };
     let click = |button: &'static str, cx: &mut TestAppContext| {
-        in_frame(cx, handle, |window, cx| window.click(button, cx))
+        in_frame(cx, handle, |window, cx| toggle_tool(window, button, cx))
     };
     let showing = |terminal: u64, cx: &mut TestAppContext| {
         in_frame(cx, handle, |window, _| {
@@ -1075,10 +1157,10 @@ fn a_host_brings_back_the_tool_it_kept_from_the_last_launch(cx: &mut TestAppCont
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, _| {
+    in_frame(cx, handle, |window, cx| {
         let sidebar = window.find(("tool-sidebar", INITIAL_WEB_TERMINAL));
         assert_eq!(sidebar.label(), Some("命令片段"));
-        assert_eq!(window.find("tool-snippets").checked(), Some(true));
+        assert_eq!(tool_checked(window, "tool-snippets", cx), Some(true));
     });
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_STAGING_TERMINAL), cx)
@@ -1107,7 +1189,9 @@ fn the_tool_switch_works_on_a_deleted_hosts_terminal(cx: &mut TestAppContext) {
     cx.run_until_parked();
     let sidebar = ("tool-sidebar", INITIAL_WEB_TERMINAL);
 
-    in_frame(cx, handle, |window, cx| window.click("tool-snippets", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-snippets", cx)
+    });
     in_frame(cx, handle, |window, _| {
         assert_eq!(window.find(sidebar).label(), Some("命令片段"));
     });
@@ -1120,15 +1204,16 @@ fn the_tool_switch_works_on_a_deleted_hosts_terminal(cx: &mut TestAppContext) {
     in_frame(cx, handle, |window, _| {
         assert_eq!(window.find(sidebar).label(), Some("命令片段"));
     });
-    in_frame(cx, handle, |window, cx| window.click("tool-snippets", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-snippets", cx)
+    });
     in_frame(cx, handle, |window, _| {
         assert!(window.try_find(sidebar).is_none());
     });
 }
 
 /// With the center split, two SSH terminals show at once: the sidebar works
-/// on the one the focus went into last, and names its host, as does the
-/// status bar.
+/// on the one the focus went into last and names its host.
 #[gpui_kit::test]
 fn with_the_center_split_the_tool_sidebar_follows_the_focus(cx: &mut TestAppContext) {
     let (handle, workspace) = open_workspace(cx);
@@ -1138,7 +1223,9 @@ fn with_the_center_split_the_tool_sidebar_follows_the_focus(cx: &mut TestAppCont
         in_frame(cx, handle, |window, cx| {
             window.click(("terminal-tab", terminal), cx)
         });
-        in_frame(cx, handle, |window, cx| window.click("tool-snippets", cx));
+        in_frame(cx, handle, |window, cx| {
+            toggle_tool(window, "tool-snippets", cx)
+        });
     }
     in_frame(cx, handle, |window, _| {
         assert_eq!(window.find("tool-sidebar-host").label(), Some("web-01"));
@@ -1176,7 +1263,7 @@ fn with_the_center_split_the_tool_sidebar_follows_the_focus(cx: &mut TestAppCont
     cx.run_until_parked();
 
     let front = |cx: &mut TestAppContext| {
-        in_frame(cx, handle, |window, _| {
+        in_frame(cx, handle, |window, cx| {
             assert!(window.find(("terminal", INITIAL_WEB_TERMINAL)).visible());
             assert!(
                 window
@@ -1185,7 +1272,7 @@ fn with_the_center_split_the_tool_sidebar_follows_the_focus(cx: &mut TestAppCont
             );
             (
                 window.find("tool-sidebar-host").label().map(str::to_string),
-                window.find("status-connection").label().map(str::to_string),
+                workspace.read(cx).active_tab(),
             )
         })
     };
@@ -1198,10 +1285,12 @@ fn with_the_center_split_the_tool_sidebar_follows_the_focus(cx: &mut TestAppCont
         in_frame(cx, handle, |window, cx| {
             window.click(("terminal", terminal), cx)
         });
-        let (sidebar, status) = front(cx);
+        let (sidebar, active) = front(cx);
         assert_eq!(sidebar.as_deref(), Some(host));
-        // 「连接中 web-01」 until the fake connects: the host is what counts.
-        assert!(status.is_some_and(|status| status.ends_with(&format!(" {host}"))));
+        assert_eq!(
+            active,
+            Some(CenterTab::Terminal(RemoteTerminalId(terminal)))
+        );
     }
 }
 
@@ -1217,7 +1306,9 @@ async fn a_tab_dropped_over_the_terminal_takes_the_sidebar_with_it(cx: &mut Test
         in_frame(cx, handle, |window, cx| {
             window.click(("terminal-tab", terminal), cx)
         });
-        in_frame(cx, handle, |window, cx| window.click("tool-snippets", cx));
+        in_frame(cx, handle, |window, cx| {
+            toggle_tool(window, "tool-snippets", cx)
+        });
     }
     open_test_explorer(cx, handle).await;
 
@@ -1275,9 +1366,9 @@ async fn a_tab_dropped_over_the_terminal_takes_the_sidebar_with_it(cx: &mut Test
         cx.run_until_parked();
     };
     let shown = |cx: &mut TestAppContext| {
-        in_frame(cx, handle, |window, _| {
+        in_frame(cx, handle, |window, cx| {
             (
-                window.try_find("tool-switch").is_some(),
+                has_tool_commands(window, cx),
                 window.try_find("tool-sidebar-host").is_some(),
             )
         })
@@ -1309,7 +1400,9 @@ fn the_tool_sidebar_drags_wider_but_never_narrower_than_it_opens(cx: &mut TestAp
     in_frame(cx, handle, |window, cx| {
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
-    in_frame(cx, handle, |window, cx| window.click("tool-snippets", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-snippets", cx)
+    });
     let sidebar = ("tool-sidebar", INITIAL_WEB_TERMINAL);
     let bounds =
         |cx: &mut TestAppContext| in_frame(cx, handle, |window, _| window.find(sidebar).bounds());

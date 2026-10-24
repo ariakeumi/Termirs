@@ -419,7 +419,10 @@ async fn sftp_internal_drag_conflict_and_close_confirmation(cx: &mut TestAppCont
     wait_for_head_status(cx, handle, "0%").await;
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        window.click(("close-explorer", SFTP_TAB), cx);
+        window.dispatch_action(
+            Box::new(shellrs::app::CloseExplorer(ExplorerId(SFTP_TAB))),
+            cx,
+        );
     })
     .unwrap();
     cx.run_until_parked();

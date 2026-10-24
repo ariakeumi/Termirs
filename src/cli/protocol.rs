@@ -14,7 +14,7 @@ use std::{
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::DeserializeOwned};
 use zeroize::Zeroizing;
 
-use super::link::OpenLink;
+use super::link::OpenTarget;
 
 /// Bumped when a request or reply changes shape. The command and the app
 /// come from the same build, so they differ only while an older copy still
@@ -194,11 +194,11 @@ pub enum Request {
     /// `shellrs` command's: ShellRS sends it when it is opened while it is
     /// already running, so it is answered whatever 启用外部 CLI says.
     ///
-    /// Without a link it is `{"type":"activate"}`, as it always was. A
+    /// Without a target it is `{"type":"activate"}`, as it always was. A
     /// ShellRS from before links ignores `open` and only comes forward.
     Activate {
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        open: Option<OpenLink>,
+        open: Option<OpenTarget>,
     },
 }
 
@@ -759,6 +759,7 @@ pub struct CredentialDeleted {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cli::OpenLink;
 
     #[test]
     fn frames_round_trip_including_binary_output() {
@@ -837,10 +838,10 @@ mod tests {
         assert_eq!(read, plain);
 
         let with_link = Request::Activate {
-            open: Some(OpenLink {
+            open: Some(OpenTarget::Link(OpenLink {
                 url: "ssh://token@10.0.0.9:2222".into(),
                 tab: Some("堡垒机".into()),
-            }),
+            })),
         };
         let wire = serde_json::to_vec(&with_link).unwrap();
         assert_eq!(parse_json::<Request>(&wire).unwrap(), with_link);

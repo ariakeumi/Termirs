@@ -16,7 +16,7 @@ use std::{
 use shellrs::app::cli_endpoint;
 use shellrs::cli::{
     AuthChoice, CliBackend, CliChange, CliError, CliServer, CliTarget, HostDetails, HostInfo,
-    OpenLink, Reply, RouteDetails, TransferCounters, TransferSummary,
+    OpenLink, OpenTarget, Reply, RouteDetails, TransferCounters, TransferSummary,
 };
 use shellrs::host::{AuthKind, HostDraft, HostStore};
 use shellrs::secrets::SecretRef;
@@ -312,20 +312,47 @@ fn shellrs_opened_with_a_link_hands_it_to_the_running_app() {
     assert_eq!(
         server.take_activation(),
         Some(vec![
-            OpenLink {
+            OpenTarget::Link(OpenLink {
                 url: xshell.into(),
                 tab: Some("跳板机".into()),
-            },
-            OpenLink {
+            }),
+            OpenTarget::Link(OpenLink {
                 url: token.into(),
                 tab: None,
-            },
-            OpenLink {
+            }),
+            OpenTarget::Link(OpenLink {
                 url: winscp.into(),
                 tab: Some("文件".into()),
-            },
+            }),
         ])
     );
+}
+
+#[test]
+fn saved_host_launch_hands_names_and_ids_to_the_running_app_without_cli_enabled() {
+    let data_dir = tempfile::tempdir().unwrap();
+    let server = CliServer::start(
+        cli_endpoint(data_dir.path()),
+        Arc::new(FakeBackend::default()),
+    )
+    .unwrap();
+    let cases: &[(&[&str], &str)] = &[
+        (&["生产 Web"], "生产 Web"),
+        (&["0123456789abcdef"], "0123456789abcdef"),
+        (&["--host", "exec"], "exec"),
+        #[cfg(target_os = "macos")]
+        (&["--shellrs-app-process", "生产 Web"], "生产 Web"),
+    ];
+    for (args, host) in cases {
+        assert_eq!(open_shellrs(data_dir.path(), args), Some(0));
+        assert_eq!(
+            server.take_activation(),
+            Some(vec![OpenTarget::Host {
+                host: (*host).into()
+            }])
+        );
+        assert_eq!(server.take_activation(), None);
+    }
 }
 
 #[test]

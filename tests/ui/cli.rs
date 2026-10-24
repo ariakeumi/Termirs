@@ -86,7 +86,8 @@ fn a_host_from_the_cli_lands_in_the_tree_with_its_group_and_password(cx: &mut Te
             .map(String::as_str),
         Some("s3cret")
     );
-    in_frame(cx, handle, |window, _| {
+    let manager = open_host_manager(cx, handle, &workspace);
+    in_frame(cx, manager, |window, _| {
         assert!(
             window
                 .within("host-tree")

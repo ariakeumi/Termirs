@@ -131,8 +131,8 @@ jobs:
             -A -t cert -f pkcs12 -k "$keychain"
           security set-key-partition-list -S apple-tool:,apple: -k "$password" "$keychain"
           security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
-          codesign --force --timestamp --options runtime --sign "$IDENTITY" build/ShellRS.app
-          codesign --verify --deep --strict --verbose=2 build/ShellRS.app
+          codesign --force --timestamp --options runtime --sign "$IDENTITY" build/Termirs.app
+          codesign --verify --deep --strict --verbose=2 build/Termirs.app
       - name: Notarize and staple
         env:
           API_KEY: ${{ secrets.APPLE_API_KEY_P8 }}
@@ -153,17 +153,17 @@ jobs:
               exit 1
             fi
           }
-          ditto -c -k --keepParent build/ShellRS.app "$RUNNER_TEMP/notarize.zip"
+          ditto -c -k --keepParent build/Termirs.app "$RUNNER_TEMP/notarize.zip"
           notarize "$RUNNER_TEMP/notarize.zip"
-          xcrun stapler staple build/ShellRS.app
+          xcrun stapler staple build/Termirs.app
           # The update package: the stapled bundle, zipped the way the
           # updater unzips it (ditto keeps the signature intact).
-          ditto -c -k --keepParent build/ShellRS.app "dist/ShellRS-$VERSION-macos-$ARCH.app.zip"
+          ditto -c -k --keepParent build/Termirs.app "dist/Termirs-$VERSION-macos-$ARCH.app.zip"
           # The first-install disk image, with the Applications shortcut.
           mkdir -p "$RUNNER_TEMP/dmg"
-          cp -R build/ShellRS.app "$RUNNER_TEMP/dmg/"
+          cp -R build/Termirs.app "$RUNNER_TEMP/dmg/"
           ln -s /Applications "$RUNNER_TEMP/dmg/Applications"
-          dmg="dist/ShellRS-$VERSION-macos-$ARCH.dmg"
+          dmg="dist/Termirs-$VERSION-macos-$ARCH.dmg"
           # hdiutil's own estimate of the image size once came out too small
           # for the app ("No space left on device"), so the size is given,
           # with room to spare; the compressed image is about half the app.
@@ -171,7 +171,7 @@ jobs:
           df -h "$RUNNER_TEMP" .
           size=$(( $(du -sm "$RUNNER_TEMP/dmg" | cut -f1) * 2 + 20 ))
           for attempt in 1 2 3; do
-            hdiutil create -volname ShellRS -srcfolder "$RUNNER_TEMP/dmg" -ov \
+            hdiutil create -volname Termirs -srcfolder "$RUNNER_TEMP/dmg" -ov \
               -fs HFS+ -size "${size}m" -format UDZO "$dmg" && break
             [ "$attempt" = 3 ] && exit 1
             sleep 10
@@ -222,7 +222,7 @@ jobs:
           $folder = Join-Path $env:RUNNER_TEMP "portable"
           New-Item -ItemType Directory -Force -Path (Join-Path $folder "data") | Out-Null
           Copy-Item "target\release\shellrs.exe", "target\release\shellrs-cli.exe" $folder
-          $zip = "$env:GITHUB_WORKSPACE\dist\ShellRS-$env:VERSION-windows-x86_64-portable.zip"
+          $zip = "$env:GITHUB_WORKSPACE\dist\Termirs-$env:VERSION-windows-x86_64-portable.zip"
           Push-Location $folder
           7z a -tzip -mx=9 $zip shellrs.exe shellrs-cli.exe data
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -330,11 +330,11 @@ jobs:
           MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
         run: |
           cd dist
-          for file in ShellRS-*; do
+          for file in Termirs-*; do
             printf '%s\n' "$MINISIGN_PASSWORD" | minisign -S -s "$MINISIGN_KEY_FILE" \
               -m "$file" -t "shellrs $VERSION $file"
           done
-          sha256sum ShellRS-* > SHA256SUMS
+          sha256sum Termirs-* > SHA256SUMS
       - name: Upload the packages
         run: |
           aws s3 cp dist "s3://$BUCKET/releases/$VERSION/" --recursive \
@@ -343,7 +343,7 @@ jobs:
         run: |
           prerelease=""
           [ "$CHANNEL" = beta ] && prerelease="--prerelease"
-          gh release create "v$VERSION" dist/* --title "ShellRS $VERSION" \
+          gh release create "v$VERSION" dist/* --title "Termirs $VERSION" \
             --notes-file notes.md $prerelease
       - name: Manifests, last
         env:

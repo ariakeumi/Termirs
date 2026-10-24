@@ -1,7 +1,7 @@
 //! Trusting what the update server sends.
 //!
 //! The manifest is signed as a whole: its notes are shown with clickable
-//! links and its addresses are where the next ShellRS comes from, so none of
+//! links and its addresses are where the next Termirs comes from, so none of
 //! it is believed before the signature checks out. The signature's trusted
 //! comment, `shellrs-manifest <channel> <version>`, is covered by the
 //! signature too; matching it against the manifest stops an old, genuinely
@@ -35,7 +35,7 @@ impl TrustedKeys {
         )
     }
 
-    /// The keys built into this ShellRS. A debug build also trusts the key
+    /// The keys built into this Termirs. A debug build also trusts the key
     /// in `SHELLRS_UPDATE_PUBLIC_KEY`, to try updating against a local
     /// server; a release build trusts only the keys it was built with.
     pub fn builtin() -> Self {
@@ -319,11 +319,11 @@ pub(crate) mod tests {
         let dist = dir.path().join("dist");
         std::fs::create_dir(&dist).unwrap();
         for name in [
-            "ShellRS-0.2.0-macos-aarch64.app.zip",
-            "ShellRS-0.2.0-macos-x86_64.app.zip",
-            "ShellRS-0.2.0-windows-x86_64-setup.exe",
-            "ShellRS-0.2.0-windows-x86_64-portable.zip",
-            "ShellRS-0.2.0-linux-x86_64.AppImage",
+            "Termirs-0.2.0-macos-aarch64.app.zip",
+            "Termirs-0.2.0-macos-x86_64.app.zip",
+            "Termirs-0.2.0-windows-x86_64-setup.exe",
+            "Termirs-0.2.0-windows-x86_64-portable.zip",
+            "Termirs-0.2.0-linux-x86_64.AppImage",
         ] {
             std::fs::write(dist.join(name), name).unwrap();
         }
@@ -359,7 +359,7 @@ pub(crate) mod tests {
         assert_eq!(manifest.notes, "### 新增\n\n- 在线升级\n");
         for arch in ["aarch64", "x86_64"] {
             let key = format!("macos-{arch}");
-            let name = format!("ShellRS-0.2.0-{key}.app.zip");
+            let name = format!("Termirs-0.2.0-{key}.app.zip");
             let asset = &manifest.assets[&key];
             // Each architecture has its own package and both download sources.
             assert_eq!(
@@ -374,7 +374,7 @@ pub(crate) mod tests {
             assert_eq!(verify_file(&dist.join(&name), asset), Ok(()));
             assert_eq!(
                 manifest.installers[&key],
-                format!("https://dl.shellrs.com/releases/0.2.0/ShellRS-0.2.0-{key}.dmg")
+                format!("https://dl.shellrs.com/releases/0.2.0/Termirs-0.2.0-{key}.dmg")
             );
         }
         assert_ne!(
@@ -383,12 +383,12 @@ pub(crate) mod tests {
         );
         assert_eq!(
             verify_file(
-                &dist.join("ShellRS-0.2.0-macos-x86_64.app.zip"),
+                &dist.join("Termirs-0.2.0-macos-x86_64.app.zip"),
                 &manifest.assets["macos-aarch64"],
             ),
             Err(UpdateError::Corrupt)
         );
-        let package = dist.join("ShellRS-0.2.0-linux-x86_64.AppImage");
+        let package = dist.join("Termirs-0.2.0-linux-x86_64.AppImage");
         assert_eq!(
             verify_file(&package, &manifest.assets["linux-x86_64"]),
             Ok(())
@@ -399,14 +399,14 @@ pub(crate) mod tests {
             manifest.installers
         );
         // The portable copy updates from the zip a person downloads.
-        let portable = dist.join("ShellRS-0.2.0-windows-x86_64-portable.zip");
+        let portable = dist.join("Termirs-0.2.0-windows-x86_64-portable.zip");
         assert_eq!(
             verify_file(&portable, &manifest.assets["windows-x86_64-portable"]),
             Ok(())
         );
         assert_eq!(
             manifest.installers["windows-x86_64-portable"],
-            "https://dl.shellrs.com/releases/0.2.0/ShellRS-0.2.0-windows-x86_64-portable.zip"
+            "https://dl.shellrs.com/releases/0.2.0/Termirs-0.2.0-windows-x86_64-portable.zip"
         );
         assert_eq!(
             open_envelope(&bytes, Channel::Beta, &keys),

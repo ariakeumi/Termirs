@@ -35,6 +35,7 @@ fn open_workspace_with_local_terminals(
             Workspace::new_with_services(
                 store,
                 cx.new(|_| settings_store()),
+                None,
                 remote,
                 fake_telnet_terminals(),
                 fake_serial_terminals(),
@@ -54,22 +55,61 @@ fn open_workspace_with_local_terminals(
 }
 
 #[gpui_kit::test]
+fn external_directory_launches_create_local_tabs_in_the_requested_folders(cx: &mut TestAppContext) {
+    let local = Arc::new(FixedLocalTerminalTransportProvider::new(Arc::new(
+        FakeTerminalFactory::default(),
+    )));
+    let (handle, workspace) =
+        open_workspace_with_local_terminals(cx, local.clone(), size(px(1280.), px(800.)));
+    let root = tempfile::tempdir().unwrap();
+    let directories = [
+        root.path().join("项目 spaces # ' $()"),
+        root.path().join("second"),
+    ];
+    for directory in &directories {
+        std::fs::create_dir(directory).unwrap();
+        let url = url::Url::from_directory_path(directory).unwrap();
+        cx.update_window(handle.into(), |_, window, cx| {
+            workspace.update(cx, |workspace, cx| {
+                workspace.open_target(
+                    shellrs::cli::OpenTarget::from_directory_url(url.as_str()).unwrap(),
+                    window,
+                    cx,
+                );
+            });
+        })
+        .unwrap();
+        cx.run_until_parked();
+        assert_eq!(
+            local.launches().last().unwrap().directory.as_ref(),
+            Some(directory)
+        );
+    }
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        let Some(CenterTab::LocalTerminal(id)) = workspace.read(cx).active_tab() else {
+            panic!("the opened directory must activate its local terminal");
+        };
+        assert!(window.find(("local-terminal", id.0)).visible());
+        assert_eq!(window.find(("local-terminal", id.0)).focused(), Some(true));
+    })
+    .unwrap();
+}
+
+#[gpui_kit::test]
 async fn creates_independent_local_terminals_from_button_and_shortcut(cx: &mut TestAppContext) {
     let factory = Arc::new(FakeTerminalFactory::default());
     let (handle, workspace) = open_workspace_with_factory(cx, factory.clone());
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        window.click("new-local-terminal", cx);
+        window.dispatch_action(Box::new(shellrs::app::NewLocalTerminal), cx);
     })
     .unwrap();
     cx.run_until_parked();
 
-    cx.wait_for(handle.into(), Duration::from_secs(2), |window, _| {
-        window
-            .try_find("status-connection")
-            .map(|element| element.label() == Some("运行中 本地终端"))
-            .unwrap_or(false)
+    cx.wait_for(handle.into(), Duration::from_secs(2), |_, cx| {
+        active_local_lifecycle(&workspace, cx) == Some(TerminalLifecycle::Running)
     })
     .await;
 
@@ -79,18 +119,15 @@ async fn creates_independent_local_terminals_from_button_and_shortcut(cx: &mut T
         assert_eq!(window.find(("local-terminal", 1_u64)).focused(), Some(true));
         // Elsewhere Ctrl+T is the shell's in a terminal.
         #[cfg(target_os = "macos")]
-        window.press("cmd-t", cx);
+        window.press("cmd-l", cx);
         #[cfg(not(target_os = "macos"))]
-        window.click("new-local-terminal", cx);
+        window.dispatch_action(Box::new(shellrs::app::NewLocalTerminal), cx);
     })
     .unwrap();
     cx.run_until_parked();
 
-    cx.wait_for(handle.into(), Duration::from_secs(2), |window, _| {
-        window
-            .try_find("status-connection")
-            .map(|element| element.label() == Some("运行中 本地终端"))
-            .unwrap_or(false)
+    cx.wait_for(handle.into(), Duration::from_secs(2), |window, cx| {
+        active_local_lifecycle(&workspace, cx) == Some(TerminalLifecycle::Running)
             && window.try_find(("local-terminal", 2_u64)).is_some()
     })
     .await;
@@ -99,10 +136,13 @@ async fn creates_independent_local_terminals_from_button_and_shortcut(cx: &mut T
         window.render_frame(cx);
         assert!(window.find(("local-terminal", 2_u64)).visible());
         assert_eq!(
-            window.find("status-connection").label(),
-            Some("运行中 本地终端")
+            active_local_lifecycle(&workspace, cx),
+            Some(TerminalLifecycle::Running)
         );
-        window.click(("close-local-terminal", 2_u64), cx);
+        window.dispatch_action(
+            Box::new(shellrs::app::CloseLocalTerminal(LocalTerminalId(2_u64))),
+            cx,
+        );
     })
     .unwrap();
     cx.run_until_parked();
@@ -125,17 +165,15 @@ async fn creates_independent_local_terminals_from_button_and_shortcut(cx: &mut T
 #[gpui_kit::test]
 async fn tab_keys_are_sent_to_the_focused_terminal(cx: &mut TestAppContext) {
     let factory = Arc::new(FakeTerminalFactory::default());
-    let (handle, _) = open_workspace_with_factory(cx, factory.clone());
+    let (handle, workspace) = open_workspace_with_factory(cx, factory.clone());
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        window.click("new-local-terminal", cx);
+        window.dispatch_action(Box::new(shellrs::app::NewLocalTerminal), cx);
     })
     .unwrap();
-    cx.wait_for(handle.into(), Duration::from_secs(2), |window, _| {
-        window
-            .try_find("status-connection")
-            .is_some_and(|element| element.label() == Some("运行中 本地终端"))
+    cx.wait_for(handle.into(), Duration::from_secs(2), |_, cx| {
+        active_local_lifecycle(&workspace, cx) == Some(TerminalLifecycle::Running)
     })
     .await;
 
@@ -179,13 +217,11 @@ async fn ctrl_with_a_letter_is_the_shells_in_a_terminal(cx: &mut TestAppContext)
     });
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        window.click("new-local-terminal", cx);
+        window.dispatch_action(Box::new(shellrs::app::NewLocalTerminal), cx);
     })
     .unwrap();
-    cx.wait_for(handle.into(), Duration::from_secs(2), |window, _| {
-        window
-            .try_find("status-connection")
-            .is_some_and(|element| element.label() == Some("运行中 本地终端"))
+    cx.wait_for(handle.into(), Duration::from_secs(2), |_, cx| {
+        active_local_lifecycle(&workspace, cx) == Some(TerminalLifecycle::Running)
     })
     .await;
 
@@ -230,6 +266,190 @@ async fn ctrl_with_a_letter_is_the_shells_in_a_terminal(cx: &mut TestAppContext)
 }
 
 #[gpui_kit::test]
+async fn local_terminal_tabs_follow_their_own_current_folder(cx: &mut TestAppContext) {
+    let factory = Arc::new(FakeTerminalFactory {
+        behavior: FakeBehavior::VisitsFolders(&["/work/ShellRS", "/work/工作 项目/", "/"]),
+        ..FakeTerminalFactory::default()
+    });
+    let (handle, workspace) = open_workspace_with_factory(cx, factory);
+    let settings = cx.update(|cx| workspace.read(cx).settings().clone());
+    in_frame(cx, handle, |window, cx| {
+        window.dispatch_action(Box::new(shellrs::app::NewLocalTerminal), cx)
+    });
+    cx.wait_for(handle.into(), Duration::from_secs(2), |window, cx| {
+        window.render_frame(cx);
+        window.find(("local-terminal-tab", 1_u64)).label() == Some("-zsh · ShellRS")
+    })
+    .await;
+
+    settings.update(cx, |store, cx| {
+        store.update(
+            |settings| settings.local_terminal.tab_name = "开发终端".into(),
+            cx,
+        )
+    });
+    in_frame(cx, handle, |window, cx| {
+        assert_eq!(
+            window.find(("local-terminal-tab", 1_u64)).label(),
+            Some("开发终端 · ShellRS")
+        );
+        window.dispatch_action(Box::new(shellrs::app::NewLocalTerminal), cx)
+    });
+    cx.wait_for(handle.into(), Duration::from_secs(2), |window, cx| {
+        window.render_frame(cx);
+        window.find(("local-terminal-tab", 2_u64)).label() == Some("开发终端 · ShellRS")
+    })
+    .await;
+
+    in_frame(cx, handle, |window, cx| {
+        window.click(("local-terminal-tab", 1_u64), cx);
+    });
+    in_frame(cx, handle, |window, cx| window.press("enter", cx));
+    cx.wait_for(handle.into(), Duration::from_secs(2), |window, cx| {
+        window.render_frame(cx);
+        window.find(("local-terminal-tab", 1_u64)).label() == Some("开发终端 · 工作 项目")
+    })
+    .await;
+    in_frame(cx, handle, |window, cx| {
+        assert_eq!(
+            window.find(("local-terminal-tab", 2_u64)).label(),
+            Some("开发终端 · ShellRS")
+        );
+        window.press("enter", cx);
+    });
+    cx.wait_for(handle.into(), Duration::from_secs(2), |window, cx| {
+        window.render_frame(cx);
+        window.find(("local-terminal-tab", 1_u64)).label() == Some("开发终端 · /")
+    })
+    .await;
+
+    settings.update(cx, |store, cx| {
+        store.update(|settings| settings.local_terminal.tab_name.clear(), cx)
+    });
+    in_frame(cx, handle, |window, cx| {
+        assert_eq!(
+            window.find(("local-terminal-tab", 1_u64)).label(),
+            Some("-zsh · /")
+        );
+        window.dispatch_action(
+            Box::new(shellrs::app::RestartLocalTerminal(LocalTerminalId(1))),
+            cx,
+        );
+    });
+    cx.wait_for(handle.into(), Duration::from_secs(2), |window, cx| {
+        window.render_frame(cx);
+        window.find(("local-terminal-tab", 1_u64)).label() == Some("-zsh · ShellRS")
+    })
+    .await;
+}
+
+#[gpui_kit::test]
+fn local_terminal_tab_names_change_from_settings_for_open_and_new_tabs(cx: &mut TestAppContext) {
+    let (handle, workspace) =
+        open_workspace_with_local_terminals(cx, fake_local_terminals(), size(px(1280.), px(2800.)));
+    let settings = cx.update(|cx| workspace.read(cx).settings().clone());
+    in_frame(cx, handle, |window, cx| {
+        window.dispatch_action(Box::new(shellrs::app::NewLocalTerminal), cx)
+    });
+    in_frame(cx, handle, |window, _| {
+        let title = window.find(("local-terminal-tab", 1_u64));
+        assert_eq!(title.label(), Some("-zsh"));
+        // Text starts at the title's edge: no icon or empty leading slot.
+        assert_eq!(
+            window
+                .within(("local-terminal-tab", 1_u64))
+                .find("label")
+                .bounds()
+                .left(),
+            title.bounds().left()
+        );
+    });
+    in_frame(cx, handle, |window, cx| window.click("open-settings", cx));
+    in_frame(cx, handle, |window, cx| {
+        window.within("settings").click("0-1", cx)
+    });
+    in_frame(cx, handle, |window, cx| {
+        assert_eq!(window.find("local-terminal-tab-name").value(), Some(""));
+        window.click("local-terminal-tab-name", cx);
+        window.input("开发终端", cx);
+    });
+    assert_eq!(
+        cx.update(|cx| settings.read(cx).settings().local_terminal.tab_name),
+        "开发终端"
+    );
+    in_frame(cx, handle, |window, _| {
+        assert_eq!(
+            window.find(("local-terminal-tab", 1_u64)).label(),
+            Some("开发终端")
+        );
+        assert_eq!(
+            window.find("local-terminal-tab-name").value(),
+            Some("开发终端")
+        );
+    });
+    in_frame(cx, handle, |window, cx| {
+        window.dispatch_action(Box::new(shellrs::app::NewLocalTerminal), cx)
+    });
+    in_frame(cx, handle, |window, _| {
+        for id in [1_u64, 2_u64] {
+            assert_eq!(
+                window.find(("local-terminal-tab", id)).label(),
+                Some("开发终端")
+            );
+        }
+    });
+
+    settings.update(cx, |store, cx| {
+        store.update(
+            |settings| {
+                settings.language = InterfaceLanguage::English;
+                settings.appearance = Appearance::Dark;
+                settings.interface.font_size = 20.;
+            },
+            cx,
+        )
+    });
+    in_frame(cx, handle, |window, cx| window.click("open-settings", cx));
+    in_frame(cx, handle, |window, cx| {
+        assert_eq!(
+            window.find("local-terminal-tab-name").label(),
+            Some("Tab name")
+        );
+        assert_eq!(
+            window.find("local-terminal-tab-name").value(),
+            Some("开发终端")
+        );
+        window.click("local-terminal-tab-name", cx);
+        window.press("secondary-a", cx);
+        window.input("   ", cx);
+    });
+    in_frame(cx, handle, |window, _| {
+        for id in [1_u64, 2_u64] {
+            assert_eq!(
+                window.find(("local-terminal-tab", id)).label(),
+                Some("-zsh")
+            );
+        }
+    });
+    in_frame(cx, handle, |window, cx| {
+        window.click("local-terminal-tab-name", cx);
+        window.press("secondary-a", cx);
+        window.press("backspace", cx);
+    });
+    assert!(cx.update(|cx| {
+        settings
+            .read(cx)
+            .settings()
+            .local_terminal
+            .tab_name
+            .is_empty()
+    }));
+    in_frame(cx, handle, |window, _| {
+        assert_eq!(window.find("local-terminal-tab-name").value(), Some(""));
+    });
+}
+
+#[gpui_kit::test]
 async fn local_terminals_run_the_shell_the_settings_name(cx: &mut TestAppContext) {
     let local = fake_local_terminals();
     // Tall enough for the whole of 终端, whose groups the page's list
@@ -240,7 +460,7 @@ async fn local_terminals_run_the_shell_the_settings_name(cx: &mut TestAppContext
 
     // Until one is named, the system's default shell.
     in_frame(cx, handle, |window, cx| {
-        window.click("new-local-terminal", cx)
+        window.dispatch_action(Box::new(shellrs::app::NewLocalTerminal), cx)
     });
     assert_eq!(local.shells(), [LocalShell::default()]);
 
@@ -278,10 +498,13 @@ async fn local_terminals_run_the_shell_the_settings_name(cx: &mut TestAppContext
         window.click(("local-terminal-tab", 1_u64), cx)
     });
     in_frame(cx, handle, |window, cx| {
-        window.click(("restart-local-terminal-toolbar", 1_u64), cx)
+        window.dispatch_action(
+            Box::new(shellrs::app::RestartLocalTerminal(LocalTerminalId(1))),
+            cx,
+        )
     });
     in_frame(cx, handle, |window, cx| {
-        window.click("new-local-terminal", cx)
+        window.dispatch_action(Box::new(shellrs::app::NewLocalTerminal), cx)
     });
     let bash = LocalShell::new("/bin/bash -l");
     assert_eq!(
@@ -298,7 +521,7 @@ async fn local_terminals_run_the_shell_the_settings_name(cx: &mut TestAppContext
         assert_eq!(window.find("local-shell").value(), Some(""));
     });
     in_frame(cx, handle, |window, cx| {
-        window.click("new-local-terminal", cx)
+        window.dispatch_action(Box::new(shellrs::app::NewLocalTerminal), cx)
     });
     assert_eq!(local.shells().last(), Some(&LocalShell::default()));
 }
@@ -310,7 +533,7 @@ async fn exited_local_terminal_keeps_its_tab_and_restarts_fresh(cx: &mut TestApp
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        window.click("new-local-terminal", cx);
+        window.dispatch_action(Box::new(shellrs::app::NewLocalTerminal), cx);
     })
     .unwrap();
 
@@ -356,12 +579,9 @@ async fn exited_local_terminal_keeps_its_tab_and_restarts_fresh(cx: &mut TestApp
     })
     .unwrap();
 
-    cx.wait_for(handle.into(), Duration::from_secs(2), |window, _| {
+    cx.wait_for(handle.into(), Duration::from_secs(2), |window, cx| {
         window.try_find(("local-terminal-exit", 1_u64)).is_none()
-            && window
-                .try_find("status-connection")
-                .map(|element| element.label() == Some("运行中 本地终端"))
-                .unwrap_or(false)
+            && active_local_lifecycle(&workspace, cx) == Some(TerminalLifecycle::Running)
     })
     .await;
 
@@ -386,7 +606,7 @@ async fn local_terminal_start_failure_is_kept_with_a_chinese_error(cx: &mut Test
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        window.click("new-local-terminal", cx);
+        window.dispatch_action(Box::new(shellrs::app::NewLocalTerminal), cx);
     })
     .unwrap();
 
@@ -421,38 +641,33 @@ async fn terminal_selection_copies_only_on_command_and_finishes_outside_view(
     cx: &mut TestAppContext,
 ) {
     let factory = Arc::new(FakeTerminalFactory::default());
-    let (handle, _) = open_workspace_with_factory(cx, factory);
+    let (handle, workspace) = open_workspace_with_factory(cx, factory);
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        window.click("new-local-terminal", cx);
+        window.dispatch_action(Box::new(shellrs::app::NewLocalTerminal), cx);
     })
     .unwrap();
-    cx.wait_for(handle.into(), Duration::from_secs(2), |window, _| {
-        window
-            .try_find("status-connection")
-            .is_some_and(|element| element.label() == Some("运行中 本地终端"))
+    cx.wait_for(handle.into(), Duration::from_secs(2), |_, cx| {
+        active_local_lifecycle(&workspace, cx) == Some(TerminalLifecycle::Running)
     })
     .await;
 
     cx.update(|cx| cx.write_to_clipboard(ClipboardItem::new_string("原剪贴板".into())));
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        window.right_click(("local-terminal", 1_u64), cx);
+        window.dispatch_action(Box::new(CopyTerminal), cx);
     })
     .unwrap();
     cx.run_until_parked();
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        let mut popup = window.within("popup-menu");
-        assert_eq!(popup.find(0_usize).label(), Some("复制"));
-        popup.click(0_usize, cx);
         assert_eq!(
             cx.read_from_clipboard().and_then(|item| item.text()),
             Some("原剪贴板".into())
         );
-        window.click("host-search", cx);
+        window.click(("local-terminal", 1_u64), cx);
     })
     .unwrap();
     cx.run_until_parked();
@@ -477,17 +692,17 @@ async fn terminal_selection_copies_only_on_command_and_finishes_outside_view(
             Some("run:1$ alpha.txt 会议纪要.md".into())
         );
 
-        window.right_click(("local-terminal", 1_u64), cx);
+        window.dispatch_action(Box::new(CopyTerminal), cx);
     })
     .unwrap();
     cx.run_until_parked();
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        let mut popup = window.within("popup-menu");
-        assert_eq!(popup.find(0_usize).label(), Some("复制"));
-        assert_eq!(popup.find(1_usize).label(), Some("粘贴"));
-        popup.click(0_usize, cx);
+        assert_eq!(
+            cx.read_from_clipboard().and_then(|item| item.text()),
+            Some("run:1$ alpha.txt 会议纪要.md".into())
+        );
     })
     .unwrap();
     cx.run_until_parked();
@@ -527,7 +742,10 @@ async fn terminal_selection_copies_only_on_command_and_finishes_outside_view(
             cx.read_from_clipboard().and_then(|item| item.text()),
             Some(selection_after_release)
         );
-        window.click(("close-local-terminal", 1_u64), cx);
+        window.dispatch_action(
+            Box::new(shellrs::app::CloseLocalTerminal(LocalTerminalId(1_u64))),
+            cx,
+        );
     })
     .unwrap();
     cx.run_until_parked();
@@ -632,6 +850,54 @@ async fn select_all_takes_the_scrollback_too(cx: &mut TestAppContext) {
     assert_eq!(clipboard(cx), Some(everything));
 }
 
+/// The native Edit menu shares text-input actions with forms and editors.
+/// A terminal translates them only while its grid has focus.
+#[gpui_kit::test]
+async fn native_edit_commands_follow_terminal_and_text_field_focus(cx: &mut TestAppContext) {
+    use gpui_kit::component::input;
+
+    let (handle, _, factory) = terminal_printing(cx, "menu output\r\n", "menu output").await;
+    in_frame(cx, handle, |window, cx| {
+        window.dispatch_action(Box::new(input::SelectAll), cx);
+    });
+    in_frame(cx, handle, |window, cx| {
+        window.dispatch_action(Box::new(input::Copy), cx);
+    });
+    assert_eq!(
+        cx.update(|cx| cx.read_from_clipboard().and_then(|item| item.text())),
+        Some("run:1$ alpha.txt 会议纪要.md\nmenu output".into())
+    );
+    cx.update(|cx| cx.write_to_clipboard(ClipboardItem::new_string("terminal paste".into())));
+    in_frame(cx, handle, |window, cx| {
+        window.dispatch_action(Box::new(input::Paste), cx);
+    });
+    cx.wait_for(handle.into(), Duration::from_secs(2), |_, _| {
+        factory.written_text() == "terminal paste"
+    })
+    .await;
+
+    in_frame(cx, handle, |window, cx| {
+        window.dispatch_action(Box::new(FindInTerminal), cx);
+    });
+    cx.update(|cx| cx.write_to_clipboard(ClipboardItem::new_string("field paste".into())));
+    in_frame(cx, handle, |window, cx| {
+        assert_eq!(window.find("terminal-find").focused(), Some(true));
+        window.dispatch_action(Box::new(input::Paste), cx);
+    });
+    in_frame(cx, handle, |window, cx| {
+        assert_eq!(window.find("terminal-find").value(), Some("field paste"));
+        window.dispatch_action(Box::new(input::SelectAll), cx);
+    });
+    in_frame(cx, handle, |window, cx| {
+        window.dispatch_action(Box::new(input::Copy), cx);
+    });
+    assert_eq!(
+        cx.update(|cx| cx.read_from_clipboard().and_then(|item| item.text())),
+        Some("field paste".into())
+    );
+    assert_eq!(factory.written_text(), "terminal paste");
+}
+
 /// Below 复制, a remote terminal's menu copies its host's address and ID.
 #[gpui_kit::test]
 async fn a_remote_terminals_menu_copies_the_host_address_and_id(cx: &mut TestAppContext) {
@@ -707,13 +973,11 @@ async fn cjk_input_is_sent_once_and_resize_commands_are_deduplicated(cx: &mut Te
 
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        window.click("new-local-terminal", cx);
+        window.dispatch_action(Box::new(shellrs::app::NewLocalTerminal), cx);
     })
     .unwrap();
-    cx.wait_for(handle.into(), Duration::from_secs(2), |window, _| {
-        window
-            .try_find("status-connection")
-            .is_some_and(|element| element.label() == Some("运行中 本地终端"))
+    cx.wait_for(handle.into(), Duration::from_secs(2), |_, cx| {
+        active_local_lifecycle(&workspace, cx) == Some(TerminalLifecycle::Running)
     })
     .await;
 
@@ -755,13 +1019,11 @@ async fn open_running_local_terminal(
     let (handle, workspace) = open_workspace_with_factory(cx, factory);
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        window.click("new-local-terminal", cx);
+        window.dispatch_action(Box::new(shellrs::app::NewLocalTerminal), cx);
     })
     .unwrap();
-    cx.wait_for(handle.into(), Duration::from_secs(2), |window, _| {
-        window
-            .try_find("status-connection")
-            .is_some_and(|element| element.label() == Some("运行中 本地终端"))
+    cx.wait_for(handle.into(), Duration::from_secs(2), |_, cx| {
+        active_local_lifecycle(&workspace, cx) == Some(TerminalLifecycle::Running)
     })
     .await;
     (handle, workspace)
@@ -1058,14 +1320,12 @@ async fn clearing_a_terminal_keeps_only_the_prompt_line(cx: &mut TestAppContext)
 }
 
 #[gpui_kit::test]
-async fn the_status_bar_shows_the_size_of_the_terminal_in_front(cx: &mut TestAppContext) {
+async fn terminals_fill_the_window_without_a_bottom_status_bar(cx: &mut TestAppContext) {
     let (handle, workspace) = open_workspace(cx);
     let terminal = RemoteTerminalId(FIRST_NEW_TERMINAL);
-    cx.update_window(handle.into(), |_, window, cx| {
-        window.render_frame(cx);
+    in_frame(cx, handle, |window, cx| {
         window.dispatch_action(Box::new(ConnectHost(HostId(WEB_01))), cx);
-    })
-    .unwrap();
+    });
     cx.wait_for(handle.into(), Duration::from_secs(2), |_, cx| {
         remote_lifecycle(&workspace, terminal, cx) == TerminalLifecycle::Running
     })
@@ -1074,39 +1334,31 @@ async fn the_status_bar_shows_the_size_of_the_terminal_in_front(cx: &mut TestApp
         workspace
             .read(cx)
             .remote_terminal(terminal)
-            .expect("terminal exists")
+            .unwrap()
             .read(cx)
             .status(cx)
             .columns()
     };
-    // Whether the status bar shows the terminal's screen as it is now.
-    let shows_its_size = |window: &mut gpui_kit::Window, cx: &mut App| {
-        let status = workspace
-            .read(cx)
-            .remote_terminal(terminal)
-            .expect("terminal exists")
-            .read(cx)
-            .status(cx);
-        let size = format!("{}×{}", status.columns(), status.rows());
-        window
-            .try_find("status-terminal-size")
-            .is_some_and(|element| element.label() == Some(size.as_str()))
-    };
-    // Laid out in the window, not the 80 columns it starts with.
-    cx.wait_for(handle.into(), Duration::from_secs(2), |window, cx| {
-        columns(cx) > 80 && shows_its_size(window, cx)
+    cx.wait_for(handle.into(), Duration::from_secs(2), |_, cx| {
+        columns(cx) > 80
     })
     .await;
     let wide = cx.update(|cx| columns(cx));
+    in_frame(cx, handle, |window, _| {
+        assert!(window.try_find("status-connection").is_none());
+        assert!(window.try_find("status-terminal-size").is_none());
+        // Only the terminal's normal p_2 content inset remains at the bottom.
+        assert_eq!(
+            window.find(("terminal", terminal.0)).bounds().bottom() + window.rem_size() * 0.5,
+            window.find("workspace").bounds().bottom()
+        );
+    });
 
-    // A smaller window, a smaller terminal, and the status bar follows.
     cx.simulate_window_resize(handle.into(), size(px(900.), px(600.)));
-    cx.wait_for(handle.into(), Duration::from_secs(2), |window, cx| {
-        columns(cx) < wide && shows_its_size(window, cx)
+    cx.wait_for(handle.into(), Duration::from_secs(2), |_, cx| {
+        columns(cx) < wide
     })
     .await;
-
-    // An SFTP tab has no terminal, so no size either.
     in_frame(cx, handle, |window, cx| {
         window.dispatch_action(Box::new(OpenExplorer(HostId(WEB_01))), cx);
     });
@@ -1117,25 +1369,27 @@ async fn the_status_bar_shows_the_size_of_the_terminal_in_front(cx: &mut TestApp
     })
     .await;
     in_frame(cx, handle, |window, cx| {
-        assert!(window.find("status-connection").visible());
+        assert!(window.try_find("status-connection").is_none());
         assert!(window.try_find("status-terminal-size").is_none());
-        window.click("new-local-terminal", cx);
+        window.dispatch_action(Box::new(shellrs::app::NewLocalTerminal), cx);
     });
-
-    // A local terminal shows its own.
-    cx.wait_for(handle.into(), Duration::from_secs(2), |window, cx| {
+    cx.wait_for(handle.into(), Duration::from_secs(2), |_, cx| {
         let Some(local) = workspace.read(cx).local_terminal(LocalTerminalId(1)) else {
             return false;
         };
         let status = local.read(cx).status(cx);
-        let size = format!("{}×{}", status.columns(), status.rows());
-        // Laid out, so no longer the 80×24 it starts with.
-        size != "80×24"
-            && window
-                .try_find("status-terminal-size")
-                .is_some_and(|element| element.label() == Some(size.as_str()))
+        active_local_lifecycle(&workspace, cx) == Some(TerminalLifecycle::Running)
+            && (status.columns(), status.rows()) != (80, 24)
     })
     .await;
+    in_frame(cx, handle, |window, _| {
+        assert!(window.try_find("status-connection").is_none());
+        assert!(window.try_find("status-terminal-size").is_none());
+        assert_eq!(
+            window.find(("local-terminal", 1u64)).bounds().bottom() + window.rem_size() * 0.5,
+            window.find("workspace").bounds().bottom()
+        );
+    });
 }
 
 /// Where the cell `(column, row)` of the first local terminal is, by the cell
@@ -1481,7 +1735,7 @@ async fn terminals_notify_where_the_user_will_see_it(cx: &mut TestAppContext) {
     cx.run_until_parked();
     assert_eq!(in_window(cx, handle), 0);
     in_frame(cx, handle, |window, cx| {
-        window.click("new-local-terminal", cx)
+        window.dispatch_action(Box::new(shellrs::app::NewLocalTerminal), cx)
     });
     cx.wait_for(handle.into(), Duration::from_secs(2), |_, cx| {
         workspace
@@ -1534,7 +1788,7 @@ async fn a_terminal_in_a_split_beside_rings_without_a_reminder(cx: &mut TestAppC
     let (handle, workspace) = open_running_local_terminal(cx, factory).await;
     in_frame(cx, handle, |window, _| window.activate_window());
     in_frame(cx, handle, |window, cx| {
-        window.click("new-local-terminal", cx)
+        window.dispatch_action(Box::new(shellrs::app::NewLocalTerminal), cx)
     });
     cx.wait_for(handle.into(), Duration::from_secs(2), |_, cx| {
         workspace
@@ -1639,7 +1893,7 @@ async fn a_matching_line_notifies_from_a_terminal_out_of_sight(cx: &mut TestAppC
     // Behind a second terminal, a finished line that matches shows in the
     // window; neither the WARN line nor the line still being written does.
     in_frame(cx, handle, |window, cx| {
-        window.click("new-local-terminal", cx)
+        window.dispatch_action(Box::new(shellrs::app::NewLocalTerminal), cx)
     });
     cx.wait_for(handle.into(), Duration::from_secs(2), |_, cx| {
         workspace
@@ -1711,7 +1965,7 @@ async fn rz_in_a_local_terminal_asks_for_files_too(cx: &mut TestAppContext) {
     let (handle, _) = open_workspace_with_factory(cx, factory.clone());
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
-        window.click("new-local-terminal", cx);
+        window.dispatch_action(Box::new(shellrs::app::NewLocalTerminal), cx);
     })
     .unwrap();
     cx.run_until_parked();

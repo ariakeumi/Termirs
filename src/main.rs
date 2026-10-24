@@ -10,26 +10,51 @@ use shellrs::settings::{SettingsProblem, SettingsStore};
 
 fn main() {
     let args = shellrs::cli::command_line_arguments().unwrap_or_default();
-    // `ShellRS ssh://user@host:port` or `ShellRS -url … -newtab 名称`: a
-    // bastion host opening ShellRS the way it opens Xshell. On every build,
-    // a Windows release build above all, where bastion hosts run it.
-    let link = shellrs::cli::link_arguments(&args);
+    #[cfg(target_os = "macos")]
+    let (args, background_launch) = {
+        let mut args = args;
+        let background = shellrs::app::take_background_launch(&mut args);
+        (args, background)
+    };
+    // A saved host's name or ID opens its terminal; SSH/SFTP links open
+    // external connections, including Xshell/WinSCP-style launch options.
+    // Recognize these on every build, including Windows GUI releases.
+    let target = shellrs::cli::launch_arguments(&args);
     // `shellrs hosts list`, `shellrs exec …`: the command, not the app. Not in a
     // Windows release build, which has nowhere to print: there the command
     // is `shellrs-cli.exe`, which 设置 → 外部 CLI puts on the PATH.
     #[cfg(any(not(windows), debug_assertions))]
-    if link.is_none() && !args.is_empty() {
+    if target.is_none() && !args.is_empty() {
         std::process::exit(shellrs::cli::main(args));
     }
-    // One ShellRS per data directory. Each keeps the hosts in memory and
+    // One Termirs per data directory. Each keeps the hosts in memory and
     // writes its changes through, so a second one would write over the
-    // first one's; opened again, ShellRS brings the running one forward
-    // and hands it the link.
-    if shellrs::cli::activate_running_app(&shellrs::app::cli_socket_path(), link.clone()) {
+    // first one's; opened again, Termirs brings the running one forward
+    // and hands it the target to open.
+    if shellrs::cli::activate_running_app(&shellrs::app::cli_socket_path(), target.clone()) {
+        return;
+    }
+    #[cfg(target_os = "macos")]
+    if target.is_some() && !background_launch {
+        if let Err(error) = shellrs::app::launch_in_background(&args) {
+            eprintln!("shellrs: cannot start the app in the background: {error}");
+            std::process::exit(1);
+        }
         return;
     }
     let app = gpui_kit::application().with_assets(shellrs::app::AppAssets);
-    // macOS: the Dock icon of a ShellRS whose window was closed, which only
+    // LaunchServices sends file URLs both at startup and to a running app.
+    // Queue them before creating the window so cold launches lose nothing.
+    let (opened_urls, directory_requests) = async_channel::unbounded();
+    app.on_open_urls(move |urls| {
+        for target in urls
+            .iter()
+            .filter_map(|url| shellrs::cli::OpenTarget::from_directory_url(url))
+        {
+            let _ = opened_urls.try_send(target);
+        }
+    });
+    // macOS: the Dock icon of a Termirs whose window was closed, which only
     // hid it (see `hide_when_closed`).
     app.on_reopen(|cx| {
         if let Some(shellrs::app::MainWindow(window)) = cx.try_global().copied() {
@@ -53,7 +78,7 @@ fn main() {
             open_settings()
         };
         shellrs::init(cx);
-        // 显示或隐藏 ShellRS takes its key from the system; tests never do.
+        // 显示或隐藏 Termirs takes its key from the system; tests never do.
         shellrs::app::listen_for_system_hotkey(cx);
         shellrs::app::show_logo_when_unbundled(cx);
         cx.activate(true);
@@ -65,16 +90,34 @@ fn main() {
             let window = cx
                 .open_window(options, |window, cx| {
                     window.activate_window();
-                    window.set_window_title("ShellRS");
+                    window.set_window_title("Termirs");
                     shellrs::app::hide_when_closed(window, cx);
                     // Drawn by the processor (a virtual machine without 3D),
-                    // ShellRS draws fewer frames.
+                    // Termirs draws fewer frames.
                     shellrs::app::note_renderer(window, cx);
                     let (store, problem) = open_store();
                     let store = cx.new(|_| store);
                     let settings = cx.new(|_| settings);
-                    let workspace = cx
-                        .new(|cx| shellrs::workspace::Workspace::new(store, settings, window, cx));
+                    let target = target.or_else(|| directory_requests.try_recv().ok());
+                    let workspace = cx.new(|cx| {
+                        shellrs::workspace::Workspace::new(store, settings, target, window, cx)
+                    });
+                    workspace.update(cx, |_, cx| {
+                        cx.spawn_in(window, async move |this, cx| {
+                            while let Ok(target) = directory_requests.recv().await {
+                                if this
+                                    .update_in(cx, |workspace, window, cx| {
+                                        shellrs::app::bring_forward(window, cx);
+                                        workspace.open_target(target, window, cx);
+                                    })
+                                    .is_err()
+                                {
+                                    break;
+                                }
+                            }
+                        })
+                        .detach()
+                    });
                     // Not pushed here: the window has no `Root` to show it yet.
                     let settings_problem = settings_problem.map(|problem| problem.message());
                     for problem in [problem, settings_problem].into_iter().flatten() {
@@ -84,10 +127,12 @@ fn main() {
                             cx,
                         );
                     }
-                    if let Some(link) = link {
-                        shellrs::workspace::open_link_once_open(&workspace, link, window, cx);
-                    }
-                    cx.new(|cx| Root::new(workspace, window, cx))
+                    cx.new(|cx| {
+                        let root = Root::new(workspace, window, cx);
+                        #[cfg(target_os = "macos")]
+                        let root = root.bg(transparent_black());
+                        root
+                    })
                 })
                 .expect("failed to open window");
             cx.update(|cx| cx.set_global(shellrs::app::MainWindow(window.into())));

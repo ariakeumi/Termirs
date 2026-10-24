@@ -22,15 +22,14 @@ use crate::host::{CredentialId, CredentialKind, HostStore, matches_credential_qu
 use crate::i18n::{UiLocale, t, tn};
 use crate::shared::{RowTooltip, RowTooltips};
 
-/// The credential list the left dock shows in place of the hosts: every
-/// saved login and how many hosts use it.
+/// The management window's saved logins and how many hosts use each.
 ///
 /// The credentials live in the shared `HostStore`; this panel observes it
 /// and owns only its selection and search.
 pub struct CredentialPanel {
     store: Entity<HostStore>,
-    /// The workspace's focus handle: actions dispatched on it reach the
-    /// workspace handlers whatever is focused, which after a dialog closes
+    /// The management window's command target, which routes to workspace
+    /// handlers whatever is focused, which after a dialog closes
     /// may be nothing at all.
     target: FocusHandle,
     search: Entity<InputState>,
@@ -101,7 +100,8 @@ impl CredentialPanel {
             selected: None,
             known,
             menu_hit: Rc::new(Cell::new(None)),
-            row_tooltips: RowTooltips::new("credential-tooltip", cx),
+            row_tooltips: RowTooltips::new("credential-tooltip", cx)
+                .with_placement(gpui_kit::base::Placement::Bottom),
             scroll_handle: ScrollHandle::new(),
             focus_handle: cx.focus_handle(),
             _subscriptions: subscriptions,
@@ -137,15 +137,7 @@ impl CredentialPanel {
         self.selected
     }
 
-    /// What the dock's title bar shows while this list is up.
-    pub fn title(&self) -> impl IntoElement + use<> {
-        h_flex()
-            .gap_1()
-            .child(Icon::new(CatalogIcon::KeyRound).small())
-            .child(t!("credential.panel.title"))
-    }
-
-    /// The dock's toolbar while this list is up.
+    /// The management toolbar while this list is up.
     pub fn toolbar_buttons(&self) -> Vec<Button> {
         let target = self.target.clone();
         vec![
@@ -431,7 +423,6 @@ impl Render for CredentialPanel {
             .on_action(cx.listener(Self::on_select_previous))
             .on_action(cx.listener(Self::on_select_next))
             .size_full()
-            .bg(cx.theme().sidebar)
             .text_color(cx.theme().sidebar_foreground)
             .child(
                 div().p_2().child(

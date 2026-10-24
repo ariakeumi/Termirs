@@ -872,9 +872,14 @@ pub fn open_credential_dialog(
     };
     window.open_dialog(cx, {
         let form = form.clone();
-        move |dialog, _, _| {
+        move |dialog, window, _| {
             dialog
                 .title(title.clone())
+                .w(rems(30.)
+                    .to_pixels(window.rem_size())
+                    .min(window.viewport_size().width * 0.94))
+                .margin_top(window.viewport_size().height * 0.05)
+                .max_h(window.viewport_size().height * 0.9)
                 // Closed by its buttons or Escape, not by a click beside it.
                 .overlay_closable(false)
                 .child(form.clone())

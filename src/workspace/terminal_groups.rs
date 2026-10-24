@@ -3,7 +3,7 @@
 //! and the split layout they are arranged in; reconnects never inherit
 //! membership.
 
-use gpui_kit::component::dock::{DockArea, DockPlacement, InsertTarget, PaneRef, PanelId};
+use gpui_kit::component::dock::{DockArea, DockPlacement, InsertTarget, PanelId};
 use gpui_kit::component::notification::Notification;
 use gpui_kit::component::{Placement, WindowExt as _};
 use gpui_kit::*;
@@ -132,27 +132,6 @@ impl Workspace {
             let state = selection(CenterTab::LocalTerminal(*id));
             panel.update(cx, |panel, cx| panel.set_broadcast_selection(state, cx));
         }
-        let area = self.dock_area.read(cx);
-        let mut first = None;
-        if let Some(tree) = area.layout(DockPlacement::Center) {
-            tree.root().walk(&mut |node| {
-                if first.is_none()
-                    && matches!(node.kind(), PaneRef::Tabs { .. })
-                    && area.zoomed_group().is_none_or(|zoomed| zoomed == node.id())
-                {
-                    first = Some(node.id());
-                }
-            });
-        }
-        let hosts_open = (!area.is_zoomed() && area.is_dock_collapsible(DockPlacement::Left))
-            .then(|| area.is_dock_open(DockPlacement::Left));
-        self.skin.set_broadcast(
-            first,
-            hosts_open,
-            self.broadcast.enabled,
-            self.broadcast.selected.len(),
-            cx,
-        );
         self.skin.set_command_bar_shown(self.broadcast.active(), cx);
         let keys = self.broadcast.keys;
         self.broadcast_bar

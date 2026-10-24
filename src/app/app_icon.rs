@@ -1,12 +1,12 @@
-//! The logo as the Dock icon of a ShellRS that is not in an app bundle.
+//! The logo as the Dock icon of a Termirs that is not in an app bundle.
 //!
-//! A packaged ShellRS takes its icon from the bundle (`ShellRS.icns`, see
+//! A packaged Termirs takes its icon from the bundle (`Termirs.icns`, see
 //! `packaging/macos`). Run straight from `cargo run` there is no bundle,
 //! and macOS shows a generic program icon; this sets the logo at runtime
 //! instead. Windows reads the icon built into the executable (`build.rs`);
 //! Linux takes it from the desktop entry the AppImage carries.
 
-/// Show the logo in the Dock when ShellRS runs outside an app bundle.
+/// Show the logo in the Dock when Termirs runs outside an app bundle.
 #[cfg(target_os = "macos")]
 pub fn show_logo_when_unbundled(cx: &gpui_kit::App) {
     use objc2::{AnyThread as _, MainThreadMarker};

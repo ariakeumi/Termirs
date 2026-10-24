@@ -18,7 +18,7 @@ root=$(cd "$here/../.." && pwd)
 tool=${APPIMAGETOOL:-appimagetool}
 
 work=$(mktemp -d)
-appdir="$work/ShellRS.AppDir"
+appdir="$work/Termirs.AppDir"
 mkdir -p "$appdir/usr/bin"
 cp "$binary" "$appdir/usr/bin/shellrs"
 chmod 755 "$appdir/usr/bin/shellrs"
@@ -34,7 +34,7 @@ cp "$icon" "$appdir/shellrs.png"
 ln -s usr/bin/shellrs "$appdir/AppRun"
 
 mkdir -p "$out"
-target="$out/ShellRS-$version-linux-x86_64.AppImage"
+target="$out/Termirs-$version-linux-x86_64.AppImage"
 ARCH=x86_64 "$tool" --no-appstream "$appdir" "$target"
 rm -rf "$work"
 echo "$target"

@@ -50,11 +50,11 @@ pub fn platform_label(portable: bool) -> SharedString {
     }
 }
 
-/// `ShellRS/0.2.0 (macos; aarch64)`: all the update server learns about
+/// `Termirs/0.2.0 (macos; aarch64)`: all the update server learns about
 /// the machine asking.
 pub fn user_agent(version: &str) -> String {
     format!(
-        "ShellRS/{version} ({}; {})",
+        "Termirs/{version} ({}; {})",
         std::env::consts::OS,
         std::env::consts::ARCH
     )
@@ -67,7 +67,7 @@ mod tests {
     #[test]
     fn the_user_agent_names_the_version_system_and_architecture() {
         let agent = user_agent("1.2.3");
-        assert!(agent.starts_with("ShellRS/1.2.3 ("), "{agent}");
+        assert!(agent.starts_with("Termirs/1.2.3 ("), "{agent}");
         assert!(agent.contains(std::env::consts::OS), "{agent}");
         assert!(
             agent.ends_with(&format!("{})", std::env::consts::ARCH)),

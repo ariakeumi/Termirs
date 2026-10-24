@@ -1,10 +1,9 @@
 //! Moving between the center's tabs from the keyboard: the next one, the
-//! previous one, or one by its position, within the current tab's group.
+//! previous one, or one by its sidebar position, within the current tab's group.
 
-use gpui_kit::component::dock::TabGroup;
 use gpui_kit::*;
 
-use crate::app::{NextTab, PreviousTab, SwitchToTab};
+use crate::app::{ActivateTab, NextTab, PreviousTab, SwitchToTab};
 
 use super::Workspace;
 
@@ -30,46 +29,26 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some((group, _)) = self.current_tab_group(cx) else {
-            return;
+        let tabs = self.tab_sidebar.read(cx).tabs_in_active_group();
+        let ix = if action.0 >= 9 {
+            tabs.len().checked_sub(1)
+        } else {
+            action.0.checked_sub(1)
         };
-        group.update(cx, |group, cx| {
-            let count = group.panels().len();
-            let ix = if action.0 >= 9 {
-                count.checked_sub(1)
-            } else {
-                action.0.checked_sub(1).filter(|ix| *ix < count)
-            };
-            if let Some(ix) = ix {
-                group.select_tab(ix, window, cx);
-            }
-        });
+        if let Some(tab) = ix.and_then(|ix| tabs.get(ix)) {
+            self.on_activate_tab(&ActivateTab::new(*tab), window, cx);
+        }
     }
 
     /// The tab `step` places away from the current one, around the ends.
     fn step_tab(&mut self, step: isize, window: &mut Window, cx: &mut Context<Self>) {
-        let Some((group, ix)) = self.current_tab_group(cx) else {
+        let tabs = self.tab_sidebar.read(cx).tabs_in_active_group();
+        let Some(ix) = tabs.iter().position(|tab| Some(*tab) == self.active_tab) else {
             return;
         };
-        group.update(cx, |group, cx| {
-            let count = group.panels().len() as isize;
-            if count > 1 {
-                let next = (ix as isize + step).rem_euclid(count) as usize;
-                group.select_tab(next, window, cx);
-            }
-        });
-    }
-
-    /// The group holding the current center tab, and where in it the tab
-    /// is. Its `select_tab` activates the panel, which reports back to
-    /// `set_active_tab`.
-    fn current_tab_group(&self, cx: &App) -> Option<(Entity<TabGroup>, usize)> {
-        let (group, panel) = self.center_tab_location(self.active_tab?, cx)?;
-        let ix = group
-            .read(cx)
-            .panels()
-            .iter()
-            .position(|candidate| candidate.panel_id(cx) == panel)?;
-        Some((group, ix))
+        if tabs.len() > 1 {
+            let next = (ix as isize + step).rem_euclid(tabs.len() as isize) as usize;
+            self.on_activate_tab(&ActivateTab::new(tabs[next]), window, cx);
+        }
     }
 }

@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use gpui_kit::component::{
-    Icon, IconName, Sizable as _,
+    Icon, IconName,
     button::Button,
     dock::{BasePanel, Panel, PanelEvent, TabGroup},
     menu::PopupMenu,
@@ -17,7 +17,7 @@ use crate::app::{
 use crate::connection::{ConnectionPrompt, ConnectionPromptReply};
 use crate::host::{ConnectionState, Host, HostConnection, HostId, HostOs, HostStore, ProtocolKind};
 use crate::i18n::t;
-use crate::shared::{ClosableTabTitle, HostMark, LatencyLabel, RenamableTab, close_tab_items};
+use crate::shared::{ClosableTabTitle, LatencyLabel, RenamableTab, close_tab_items};
 
 use super::{
     HostTerminalTransports, RemoteTerminalId, ReportedDirectory, TerminalEvent, TerminalLifecycle,
@@ -244,7 +244,7 @@ impl TerminalPanel {
         }
     }
 
-    /// The terminal's state and size, for the window's status bar.
+    /// A snapshot of the terminal's state and size.
     pub fn status(&self, cx: &App) -> TerminalStatus {
         self.terminal.read(cx).status(cx)
     }
@@ -347,26 +347,19 @@ impl BasePanel for TerminalPanel {
 impl Panel for TerminalPanel {
     fn title(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let id = self.id;
-        let (address, os) = (self.host.address.clone(), self.host.os);
         let tab_menu = self.tab_menu(cx);
         let state = self.connection_state(cx);
-        let mark = super::BroadcastSelection::lead(
+        let checkbox = super::BroadcastSelection::checkbox(
             self.broadcast.clone(),
             CenterTab::Terminal(id),
             self.tab_title(cx),
-            HostMark::new(
-                ("terminal-tab-os", id.0),
-                self.default_title(cx),
-                address,
-                os,
-            )
-            .protocol(self.host.kind())
-            .connection_state(state)
-            .small(),
         );
-        ClosableTabTitle::new(("terminal-tab", id.0), mark, self.tab_title(cx))
+        let mut title = ClosableTabTitle::text(("terminal-tab", id.0), self.tab_title(cx));
+        if let Some(checkbox) = checkbox {
+            title = title.with_leading(checkbox);
+        }
+        title
             .connection_state(state)
-            .closable(("close-terminal", id.0), Box::new(CloseTerminal(id)))
             .context_menu(move |menu, _, cx| tab_menu.build(menu, cx))
     }
 

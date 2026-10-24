@@ -40,6 +40,8 @@ gpui_kit::actions!(
         ImportKnownHosts,
         /// Open a new local login-shell terminal.
         NewLocalTerminal,
+        /// Open a dual-pane SFTP tab for the host of the current tab.
+        OpenActiveExplorer,
         /// Start 命令广播, which turns terminal tab marks into checkboxes,
         /// or end it.
         ToggleTerminalBroadcast,
@@ -112,9 +114,18 @@ gpui_kit::actions!(
         NewSnippetCategory,
         /// Open the new-group dialog of 项目.
         NewTerminalGroup,
-        /// Show the host list in the left dock.
+        /// Open or bring forward the host management window.
         ShowHosts,
-        /// Show the port-forwarding list in the left dock.
+        /// Show the open tabs in the left sidebar.
+        ShowTabs,
+        /// Move through the open-tab list without leaving the sidebar.
+        SelectNextOpenTab,
+        SelectPreviousOpenTab,
+        /// Put keyboard input back in the displayed tab.
+        FocusActiveTab,
+        /// Close the host management window, leaving connections running.
+        CloseHostManager,
+        /// Show port forwarding in the host management window.
         ShowForwards,
         /// Open the new-forward dialog.
         NewForward,
@@ -125,7 +136,7 @@ gpui_kit::actions!(
         SelectPreviousForward,
         /// Move the forward list's selection to the row below.
         SelectNextForward,
-        /// Show the credential list in the left dock.
+        /// Show credentials in the host management window.
         ShowCredentials,
         /// Open the new-credential dialog.
         NewCredential,
@@ -175,6 +186,22 @@ gpui_kit::actions!(
         ZoomTerminalReset,
         /// Quit the application.
         Quit,
+        /// Show the native macOS About panel.
+        About,
+        /// Hide the application, leaving its connections running.
+        HideApp,
+        /// Hide the other applications on macOS.
+        HideOtherApps,
+        /// Show all applications hidden on macOS.
+        ShowAllApps,
+        /// Minimize the front window.
+        MinimizeWindow,
+        /// Toggle the front window's standard zoom size.
+        ZoomWindow,
+        /// Enter or leave native full screen in the front window.
+        ToggleFullScreen,
+        /// Bring the main workspace window forward.
+        ShowMainWindow,
         /// Show the previewed image larger, by one step.
         ZoomPreviewIn,
         /// Show the previewed image smaller, by one step.
@@ -469,6 +496,22 @@ pub enum CenterTab {
     /// There is at most one settings tab.
     Settings,
     Editor(EditorId),
+}
+
+/// Select one existing tab from the sidebar.
+#[derive(Action, Clone, PartialEq, Eq)]
+#[action(namespace = shellrs, no_json)]
+pub struct ActivateTab {
+    tab: CenterTab,
+}
+
+impl ActivateTab {
+    pub fn new(tab: CenterTab) -> Self {
+        Self { tab }
+    }
+    pub fn tab(&self) -> CenterTab {
+        self.tab
+    }
 }
 
 /// Select one connected terminal for interactive input broadcast.

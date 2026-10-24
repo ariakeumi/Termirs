@@ -48,7 +48,7 @@ fn open_connections(
         window.click(("terminal-tab", INITIAL_WEB_TERMINAL), cx)
     });
     in_frame(cx, handle, |window, cx| {
-        window.click("tool-connections", cx)
+        toggle_tool(window, "tool-connections", cx)
     });
     handle
 }
@@ -78,12 +78,12 @@ async fn the_connections_list_the_hosts_sockets_with_their_processes(cx: &mut Te
         "共 5 条 · 3 个监听端口 · 1 条已连接",
     )
     .await;
-    in_frame(cx, handle, |window, _| {
+    in_frame(cx, handle, |window, cx| {
         assert_eq!(
             window.find(("tool-sidebar", INITIAL_WEB_TERMINAL)).label(),
             Some("网络连接")
         );
-        assert_eq!(window.find("tool-connections").checked(), Some(true));
+        assert_eq!(tool_checked(window, "tool-connections", cx), Some(true));
         assert_eq!(
             window
                 .find("netstat-socket:tcp 0.0.0.0:22 0.0.0.0:*")
@@ -233,7 +233,9 @@ async fn the_connections_are_read_each_time_they_come_on_screen_and_only_then(
     .await;
 
     // Another tool: nothing runs.
-    in_frame(cx, handle, |window, cx| window.click("tool-snippets", cx));
+    in_frame(cx, handle, |window, cx| {
+        toggle_tool(window, "tool-snippets", cx)
+    });
     cx.executor().advance_clock(Duration::from_secs(10));
     cx.run_until_parked();
     assert_eq!(factory.exec_count(), 1);
@@ -243,7 +245,7 @@ async fn the_connections_are_read_each_time_they_come_on_screen_and_only_then(
     {
         let _pending_refresh = factory.exec_outputs.lock().unwrap();
         in_frame(cx, handle, |window, cx| {
-            window.click("tool-connections", cx)
+            toggle_tool(window, "tool-connections", cx)
         });
         in_frame(cx, handle, |window, _| {
             assert!(

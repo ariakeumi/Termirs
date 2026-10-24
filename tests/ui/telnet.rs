@@ -24,9 +24,8 @@ async fn connect(cx: &mut TestAppContext, handle: WindowHandle<Root>, id: HostId
     });
     cx.wait_for(handle.into(), Duration::from_secs(2), |window, cx| {
         window.render_frame(cx);
-        window
-            .try_find("status-connection")
-            .is_some_and(|status| status.label() == Some("已连接 switch"))
+        window.try_find(("terminal-tab", 1u64)).is_some()
+            && tab_connection_state(window, ("terminal-tab", 1u64)).is_none()
     })
     .await;
 }
@@ -46,7 +45,9 @@ async fn a_telnet_host_is_made_with_its_automatic_login(cx: &mut TestAppContext)
         HostStore::empty().with_secrets(keychain.clone()),
         tester.clone(),
     );
-    in_frame(cx, handle, |window, cx| window.click("new-host-panel", cx));
+    in_frame(cx, handle, |window, cx| {
+        window.dispatch_action(Box::new(shellrs::app::NewHost), cx)
+    });
     in_frame(cx, handle, |window, cx| {
         assert_eq!(window.find("host-port").value(), Some("22"));
         window.within("host-protocol").click(1usize, cx);
@@ -148,7 +149,9 @@ async fn a_telnet_host_logs_in_only_with_password_credentials(cx: &mut TestAppCo
     );
     let (handle, _) =
         open_workspace_with_tester(cx, store, Arc::new(FakeConnectionTester::default()));
-    in_frame(cx, handle, |window, cx| window.click("new-host-panel", cx));
+    in_frame(cx, handle, |window, cx| {
+        window.dispatch_action(Box::new(shellrs::app::NewHost), cx)
+    });
     in_frame(cx, handle, |window, cx| {
         window.within("host-protocol").click(1usize, cx)
     });
@@ -211,7 +214,8 @@ async fn an_open_telnet_terminal_keeps_its_prompts_and_a_new_one_takes_the_new_o
 
     // Reconnecting logs in as the tab first did; a new tab, as now.
     in_frame(cx, handle, |window, cx| {
-        window.click(("reconnect", 1_u64), cx)
+        window.click(("terminal", 1_u64), cx);
+        window.dispatch_action(Box::new(ReconnectTerminal(RemoteTerminalId(1_u64))), cx)
     });
     cx.wait_for(handle.into(), Duration::from_secs(2), |_, _| {
         telnet.logins().len() == 2
@@ -247,14 +251,11 @@ async fn a_telnet_terminal_has_no_sftp_and_only_snippets_beside_it(cx: &mut Test
         fake_serial_terminals(),
     );
     connect(cx, handle, id).await;
-    in_frame(cx, handle, |window, _| {
+    in_frame(cx, handle, |window, cx| {
         assert!(window.try_find(("sftp", 1_u64)).is_none());
-        assert!(window.find(("reconnect", 1_u64)).visible());
-        assert_eq!(
-            window.find(("terminal-tab-os", 1_u64)).label(),
-            Some("Telnet")
-        );
-        assert!(window.find("tool-snippets").visible());
+        assert!(window.try_find(("reconnect", 1_u64)).is_none());
+        assert!(window.try_find(("terminal-tab-os", 1_u64)).is_none());
+        assert!(tool_offered(window, "tool-snippets", cx));
         for tool in [
             "tool-history",
             "tool-files",
@@ -262,7 +263,7 @@ async fn a_telnet_terminal_has_no_sftp_and_only_snippets_beside_it(cx: &mut Test
             "tool-processes",
             "tool-monitor",
         ] {
-            assert!(window.try_find(tool).is_none(), "{tool}");
+            assert!(!tool_offered(window, tool, cx), "{tool}");
         }
     });
 
@@ -297,7 +298,7 @@ async fn a_telnet_host_is_connected_to_without_saving_it(cx: &mut TestAppContext
         fake_serial_terminals(),
     );
     in_frame(cx, handle, |window, cx| {
-        window.click("temporary-connection", cx)
+        window.dispatch_action(Box::new(shellrs::app::NewTemporaryConnection), cx)
     });
     in_frame(cx, handle, |window, cx| {
         window.within("host-protocol").click(1usize, cx)

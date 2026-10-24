@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Put a built `shellrs` binary into ShellRS.app.
+# Put a built `shellrs` binary into Termirs.app.
 #
 #   packaging/macos/bundle.sh <binary> <version> <build-number> <out-dir>
 #
@@ -15,12 +15,13 @@ out=$4
 
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
-app="$out/ShellRS.app"
+app="$out/Termirs.app"
 
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$binary" "$app/Contents/MacOS/shellrs"
 chmod 755 "$app/Contents/MacOS/shellrs"
+ln -s shellrs "$app/Contents/MacOS/termirs"
 sed -e "s/@VERSION@/$version/g" -e "s/@BUILD@/$build/g" \
     "$here/Info.plist.in" > "$app/Contents/Info.plist"
 plutil -lint "$app/Contents/Info.plist" >/dev/null
@@ -33,17 +34,17 @@ done
 icns="$root/assets/logo/shellrs.icns"
 icon="$root/assets/logo/shellrs.png"
 if [ -f "$icns" ]; then
-    cp "$icns" "$app/Contents/Resources/ShellRS.icns"
+    cp "$icns" "$app/Contents/Resources/Termirs.icns"
 elif [ -f "$icon" ]; then
     work=$(mktemp -d)
-    iconset="$work/ShellRS.iconset"
+    iconset="$work/Termirs.iconset"
     mkdir -p "$iconset"
     for size in 16 32 128 256 512; do
         sips -z "$size" "$size" "$icon" --out "$iconset/icon_${size}x${size}.png" >/dev/null
         double=$((size * 2))
         sips -z "$double" "$double" "$icon" --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
     done
-    iconutil -c icns "$iconset" -o "$app/Contents/Resources/ShellRS.icns"
+    iconutil -c icns "$iconset" -o "$app/Contents/Resources/Termirs.icns"
     rm -rf "$work"
 else
     echo "warning: no icon in assets/logo; the bundle has none" >&2
