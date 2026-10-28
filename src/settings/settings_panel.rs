@@ -8,7 +8,6 @@ use gpui_kit::component::{
     group_box::GroupBoxVariant,
     h_flex,
     input::{Input, InputEvent, InputState},
-    label::Label,
     menu::PopupMenu,
     separator::Separator,
     setting::{
@@ -22,9 +21,8 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::app::{
-    CatalogIcon, CenterTab, CheckForUpdates, CopyAgentSkill, DownloadUpdate, InstallAgentSkill,
-    InstallCliCommand, OpenDownloadPage, OpenWebsite, RefreshCliIntegration, RemoveAgentSkill,
-    RemoveCliCommand, ShowUpdate,
+    CatalogIcon, CenterTab, CopyAgentSkill, InstallAgentSkill, InstallCliCommand, OpenWebsite,
+    RefreshCliIntegration, RemoveAgentSkill, RemoveCliCommand,
 };
 use crate::cli::{AgentKind, BinaryStatus, CliIntegration, IntegrationStatus, SkillStatus};
 use crate::explorer::{FileIcon, FileIconKind};
@@ -35,7 +33,6 @@ use crate::terminal::{
     FONT_SIZE_RANGE, LINE_HEIGHT_RANGE, TerminalColors, TerminalFont, TerminalFontPreview,
     TerminalHighlights, is_font_installed, monospace_font_families,
 };
-use crate::update::{Phase, Tone, UpdateSnapshot, UpdateStep, Updater, build_info, platform};
 
 use super::highlight_rules::HighlightRulesEditor;
 use super::local_shell_editor::{LocalShellEditor, local_shell_field};
@@ -64,8 +61,6 @@ pub struct SettingsPanel {
     store: Entity<SettingsStore>,
     /// What of the external CLI is installed, for 外部 CLI.
     integration: Entity<CliIntegration>,
-    /// Where updating stands, for 关于.
-    updater: Entity<Updater>,
     /// The rule table of 关键字高亮, whose fields keep their state across
     /// the page's renders.
     highlight_rules: Entity<HighlightRulesEditor>,
@@ -83,7 +78,7 @@ pub struct SettingsPanel {
     shown_category: Rc<Cell<usize>>,
     focus_handle: FocusHandle,
     tab_group: Option<WeakEntity<TabGroup>>,
-    _subscriptions: [Subscription; 6],
+    _subscriptions: [Subscription; 5],
     _font_scan: Task<()>,
 }
 
@@ -91,7 +86,6 @@ impl SettingsPanel {
     pub fn new(
         store: Entity<SettingsStore>,
         integration: Entity<CliIntegration>,
-        updater: Entity<Updater>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -123,7 +117,6 @@ impl SettingsPanel {
             cx.observe(&shortcuts, |_, _, cx| cx.notify()),
             cx.observe(&local_shell, |_, _, cx| cx.notify()),
             cx.observe(&integration, |_, _, cx| cx.notify()),
-            cx.observe(&updater, |_, _, cx| cx.notify()),
         ];
         // Loading every family takes a moment the first time; the process
         // keeps the answer, so later tabs have it at once.
@@ -140,7 +133,6 @@ impl SettingsPanel {
         Self {
             store,
             integration,
-            updater,
             highlight_rules,
             shortcuts,
             local_shell,
@@ -532,7 +524,7 @@ fn local_terminal_group(panel: &SettingsPanel) -> SettingGroup {
         ])
 }
 
-/// 终端 → 终端交互: what the mouse does besides selecting.
+/// 终端 → 终端交互: mouse behavior and clearing.
 fn interaction_group(store: &Entity<SettingsStore>) -> SettingGroup {
     let (reader, writer) = (store.clone(), store.clone());
     SettingGroup::new()
@@ -569,6 +561,15 @@ fn interaction_group(store: &Entity<SettingsStore>) -> SettingGroup {
                 ),
             )
             .description(t!("settings.interaction.right_click_description")),
+            SettingItem::new(
+                t!("settings.interaction.clear_action"),
+                choice_field(
+                    store,
+                    |settings| settings.terminal_interaction.clear_action,
+                    |settings, action| settings.terminal_interaction.clear_action = action,
+                ),
+            )
+            .description(t!("settings.interaction.clear_action_description")),
         ])
 }
 
@@ -936,58 +937,12 @@ fn external_cli_groups(panel: &SettingsPanel, cx: &App) -> Vec<SettingGroup> {
     ]
 }
 
-/// 关于: 应用更新, as three rows: the version with where updating stands,
-/// the channel, and 自动升级; then 隐私, whether usage statistics are sent.
-fn about_groups(panel: &SettingsPanel, cx: &App) -> Vec<SettingGroup> {
-    let snapshot = panel.updater.read(cx).snapshot();
-    let (reader, writer) = (panel.store.clone(), panel.store.clone());
-    let (analytics_reader, analytics_writer) = (panel.store.clone(), panel.store.clone());
+/// 关于: the installed version and the product website.
+fn about_groups(_: &SettingsPanel, _: &App) -> Vec<SettingGroup> {
     vec![
-        SettingGroup::new()
-            .title(t!("settings.about.updates"))
-            .items([
-                current_version_item(snapshot),
-                SettingItem::new(
-                    t!("settings.about.channel"),
-                    choice_field(
-                        &panel.store,
-                        |settings| settings.update.channel,
-                        |settings, channel| settings.update.channel = channel,
-                    ),
-                )
-                .description(t!("settings.about.channel_description")),
-                SettingItem::new(
-                    t!("settings.about.automatic"),
-                    SettingField::switch(
-                        move |cx| reader.read(cx).settings().update.automatic,
-                        move |automatic, cx| {
-                            writer.update(cx, |store, cx| {
-                                store.update(|settings| settings.update.automatic = automatic, cx)
-                            });
-                        },
-                    )
-                    .default_value(true),
-                )
-                .description(t!("settings.about.automatic_description")),
-            ]),
-        SettingGroup::new()
-            .title(t!("settings.about.privacy"))
-            .items([SettingItem::new(
-                t!("settings.about.analytics"),
-                SettingField::switch(
-                    move |cx| analytics_reader.read(cx).settings().analytics.enabled,
-                    move |enabled, cx| {
-                        analytics_writer.update(cx, |store, cx| {
-                            store.update(|settings| settings.analytics.enabled = enabled, cx)
-                        });
-                    },
-                )
-                .default_value(true),
-            )
-            .description(t!("settings.about.analytics_description"))]),
-        SettingGroup::new()
-            .title("Termirs")
-            .items([SettingItem::new(
+        SettingGroup::new().title("Termirs").items([
+            current_version_item(),
+            SettingItem::new(
                 t!("settings.about.website"),
                 SettingField::render(|options, _, _| {
                     Button::new("open-website")
@@ -998,127 +953,51 @@ fn about_groups(panel: &SettingsPanel, cx: &App) -> Vec<SettingGroup> {
                         .on_click(|_, window, cx| window.dispatch_action(Box::new(OpenWebsite), cx))
                 }),
             )
-            .description(t!("settings.about.website_description"))]),
+            .description(t!("settings.about.website_description")),
+        ]),
     ]
 }
 
-/// 当前版本: where updating stands under the title, and the version with the
-/// one button that applies: 检查更新, or the step the version on offer
-/// needs. Laid out like the page's other rows.
-fn current_version_item(snapshot: UpdateSnapshot) -> SettingItem {
-    SettingItem::render(move |options, _, cx| {
-        let (text, tone) = snapshot.status_line();
-        let color = match tone {
-            Tone::Plain => cx.theme().muted_foreground,
-            Tone::Warning => cx.theme().warning,
-            Tone::Danger => cx.theme().danger,
-        };
-        let version = SharedString::from(format!("v{}", build_info::VERSION));
-        let build = SharedString::from(build_description());
-        let step = snapshot.step().map(|step| -> (_, _, Box<dyn Action>) {
-            match step {
-                UpdateStep::Restart => (
-                    "show-update",
-                    t!("settings.about.restart"),
-                    Box::new(ShowUpdate),
-                ),
-                UpdateStep::DownloadPage => (
-                    "open-download-page",
-                    t!("settings.about.download_page"),
-                    Box::new(OpenDownloadPage),
-                ),
-                UpdateStep::Download { retry } => (
-                    "download-update",
-                    if retry {
-                        t!("settings.about.retry_download")
-                    } else {
-                        t!("settings.about.download")
-                    },
-                    Box::new(DownloadUpdate),
-                ),
-            }
-        });
-        let button = match step {
-            Some((id, label, action)) => Some(
-                Button::new(id)
-                    .primary()
-                    .with_size(options.size())
-                    .label(label)
-                    .on_click(move |_, window, cx| {
-                        window.dispatch_action(action.boxed_clone(), cx)
-                    }),
-            ),
-            None => (snapshot.phase != Phase::Off).then(|| {
-                Button::new("check-for-updates")
-                    .outline()
-                    .with_size(options.size())
-                    .icon(Icon::new(CatalogIcon::RefreshCw))
-                    .label(t!("settings.about.check"))
-                    .loading(snapshot.phase == Phase::Checking)
-                    .disabled(!snapshot.can_check())
-                    .on_click(|_, window, cx| window.dispatch_action(Box::new(CheckForUpdates), cx))
-            }),
-        };
-        // A narrow page stacks each row, the controls under the text.
-        let stacked = options.layout() == Axis::Vertical;
-        let row = if stacked {
-            v_flex()
-        } else {
-            h_flex().justify_between().items_center()
-        };
-        row.w_full()
-            .gap_3()
-            .child(
-                v_flex()
-                    .map(|text| {
-                        if stacked {
-                            text.w_full()
-                        } else {
-                            text.flex_1().max_w_3_5()
-                        }
-                    })
-                    .child(Label::new(t!("settings.about.version")).text_sm())
-                    .child(
-                        div()
-                            .id("update-status")
-                            .test_support()
-                            .aria_label(text.clone())
-                            .text_sm()
-                            .text_color(color)
-                            .child(text),
-                    ),
-            )
-            .child(
-                h_flex()
-                    .gap_3()
-                    .flex_shrink_0()
-                    .child(
-                        div()
-                            .id("about-version")
-                            .test_support()
-                            .aria_label(version.clone())
-                            .text_sm()
-                            .font_family(cx.theme().mono_font_family.clone())
-                            .text_color(cx.theme().muted_foreground)
-                            .tooltip(move |window, cx| {
-                                Tooltip::new(build.clone()).build(window, cx)
-                            })
-                            .child(version),
-                    )
-                    .children(button),
-            )
-    })
+fn current_version_item() -> SettingItem {
+    SettingItem::new(
+        t!("settings.about.version"),
+        SettingField::render(|_, _, cx| {
+            let version = SharedString::from(format!("v{}", env!("CARGO_PKG_VERSION")));
+            let build = SharedString::from(build_description());
+            div()
+                .id("about-version")
+                .test_support()
+                .aria_label(version.clone())
+                .text_sm()
+                .font_family(cx.theme().mono_font_family.clone())
+                .text_color(cx.theme().muted_foreground)
+                .tooltip(move |window, cx| Tooltip::new(build.clone()).build(window, cx))
+                .child(version)
+        }),
+    )
     .keywords(keywords(t!("settings.about.version_keywords")))
 }
 
 /// The version's tooltip: which build this is, and for which system.
 fn build_description() -> String {
-    let build = match (build_info::COMMIT, build_info::BUILD_DATE) {
+    let build = match (
+        option_env!("SHELLRS_COMMIT"),
+        option_env!("SHELLRS_BUILD_DATE"),
+    ) {
         (Some(commit), Some(date)) => format!("{} · {date}", commit.get(..7).unwrap_or(commit)),
         (Some(commit), None) => commit.get(..7).unwrap_or(commit).to_string(),
         _ => t!("settings.about.local_build").to_string(),
     };
-    let mut platform = platform::platform_label(crate::app::portable_root().is_some()).to_string();
+    let mut platform = match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("macos", "aarch64") => "macOS · Apple Silicon".into(),
+        ("macos", "x86_64") => "macOS · Intel".into(),
+        ("windows", "x86_64") if crate::app::portable_root().is_some() => {
+            t!("settings.about.windows_portable").to_string()
+        }
+        ("windows", "x86_64") => "Windows · x64".into(),
+        ("linux", "x86_64") => "Linux · x64".into(),
+        (os, arch) => format!("{os} · {arch}"),
+    };
     if crate::app::software_rendering() {
         platform = format!("{platform} · {}", t!("settings.about.software_rendering"));
     }

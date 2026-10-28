@@ -9,10 +9,9 @@ use crate::explorer::{FileIconStyle, FileSizeFormat, ShowHiddenFiles};
 use crate::i18n::t;
 use crate::sftp::{DEFAULT_PARALLEL_TRANSFERS, PARALLEL_TRANSFERS_RANGE};
 use crate::terminal::{
-    DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT, FONT_SIZE_RANGE, HighlightRule, LINE_HEIGHT_RANGE,
-    RightClick, TerminalInteraction, TerminalTheme, default_rules,
+    ClearAction, DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT, FONT_SIZE_RANGE, HighlightRule,
+    LINE_HEIGHT_RANGE, RightClick, TerminalInteraction, TerminalTheme, default_rules,
 };
-use crate::update::Channel;
 
 /// Everything the settings page changes. Each field falls back to its
 /// default when the file does not mention it, so a file written by an older
@@ -39,9 +38,6 @@ pub struct AppSettings {
     /// 终端 → 本地终端.
     pub local_terminal: LocalTerminalSettings,
     pub external_cli: ExternalCliSettings,
-    pub update: UpdateSettings,
-    /// 关于 → 隐私.
-    pub analytics: AnalyticsSettings,
     /// The SFTP 大小 column, switched from the column title's menu rather
     /// than the settings page, as in WinSCP.
     pub file_size_format: FileSizeFormat,
@@ -433,55 +429,6 @@ pub struct ExternalCliSettings {
     pub enabled: bool,
 }
 
-/// 关于 → 应用更新.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct UpdateSettings {
-    /// 自动升级: look for a newer ShellRS in the background and download
-    /// it. On unless the user turns it off.
-    pub automatic: bool,
-    /// 更新渠道. A release build starts on the channel it was built for.
-    pub channel: Channel,
-}
-
-impl Default for UpdateSettings {
-    fn default() -> Self {
-        Self {
-            automatic: true,
-            channel: Channel::of_this_build().unwrap_or(Channel::Stable),
-        }
-    }
-}
-
-/// 关于 → 隐私.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct AnalyticsSettings {
-    /// 发送匿名使用统计. On unless the user turns it off.
-    pub enabled: bool,
-}
-
-impl Default for AnalyticsSettings {
-    fn default() -> Self {
-        Self { enabled: true }
-    }
-}
-
-impl Choice for Channel {
-    const ALL: &'static [Self] = &[Self::Stable, Self::Beta];
-
-    fn key(self) -> &'static str {
-        Channel::key(self)
-    }
-
-    fn label(self) -> SharedString {
-        match self {
-            Self::Stable => t!("settings.channel.stable"),
-            Self::Beta => "Beta".into(),
-        }
-    }
-}
-
 impl Choice for FileIconStyle {
     const ALL: &'static [Self] = &[Self::Monochrome, Self::Color];
 
@@ -496,6 +443,24 @@ impl Choice for FileIconStyle {
         match self {
             Self::Monochrome => t!("settings.file_icons.monochrome"),
             Self::Color => t!("settings.file_icons.color"),
+        }
+    }
+}
+
+impl Choice for ClearAction {
+    const ALL: &'static [Self] = &[Self::VisibleScreen, Self::Scrollback];
+
+    fn key(self) -> &'static str {
+        match self {
+            Self::VisibleScreen => "visible_screen",
+            Self::Scrollback => "scrollback",
+        }
+    }
+
+    fn label(self) -> SharedString {
+        match self {
+            Self::VisibleScreen => t!("settings.clear_action.visible_screen"),
+            Self::Scrollback => t!("settings.clear_action.scrollback"),
         }
     }
 }
@@ -736,6 +701,7 @@ mod tests {
         check::<InterfaceLanguage>();
         check::<Appearance>();
         check::<RightClick>();
+        check::<ClearAction>();
         check::<FileIconStyle>();
         assert_eq!(Appearance::from_key("sepia"), None);
     }
@@ -1068,40 +1034,19 @@ mod tests {
     }
 
     #[test]
-    fn automatic_updates_are_on_unless_the_file_says_otherwise() {
-        let settings: AppSettings = serde_json::from_str("{}").unwrap();
-        assert!(settings.update.automatic);
-        let settings: AppSettings = serde_json::from_str(r#"{"update":{}}"#).unwrap();
-        assert!(settings.update.automatic);
-        let settings: AppSettings =
-            serde_json::from_str(r#"{"update":{"automatic":false}}"#).unwrap();
-        assert!(!settings.update.automatic);
-    }
-
-    #[test]
-    fn usage_statistics_are_sent_unless_the_file_says_otherwise() {
-        let settings: AppSettings = serde_json::from_str("{}").unwrap();
-        assert!(settings.analytics.enabled);
-        let settings: AppSettings = serde_json::from_str(r#"{"analytics":{}}"#).unwrap();
-        assert!(settings.analytics.enabled);
-        let settings: AppSettings =
-            serde_json::from_str(r#"{"analytics":{"enabled":false}}"#).unwrap();
-        assert!(!settings.analytics.enabled);
-    }
-
-    #[test]
-    fn the_update_channel_is_the_builds_until_one_is_chosen() {
-        // A development build has no channel of its own.
-        let settings: AppSettings = serde_json::from_str(r#"{"update":{}}"#).unwrap();
-        assert_eq!(settings.update.channel, Channel::Stable);
-        let settings: AppSettings =
-            serde_json::from_str(r#"{"update":{"channel":"beta"}}"#).unwrap();
-        assert_eq!(settings.update.channel, Channel::Beta);
-        assert_eq!(
-            serde_json::to_value(&settings.update).unwrap()["channel"],
-            "beta"
-        );
-        assert_eq!(Channel::from_key("beta"), Some(Channel::Beta));
+    fn removed_settings_do_not_prevent_loading() {
+        for enabled in [true, false] {
+            let settings: AppSettings = serde_json::from_value(serde_json::json!({
+                "analytics": { "enabled": enabled },
+                "update": { "automatic": enabled, "channel": "beta" },
+                "language": "en",
+            }))
+            .unwrap();
+            assert_eq!(settings.language, InterfaceLanguage::English);
+            let saved = serde_json::to_value(settings).unwrap();
+            assert!(saved.get("analytics").is_none());
+            assert!(saved.get("update").is_none());
+        }
     }
 
     #[test]

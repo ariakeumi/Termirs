@@ -48,8 +48,8 @@ pub use local_pty::LocalPtyTransportProvider;
 pub use local_shell::{LocalLaunch, LocalShell, default_shell_name, installed_shells, quote_word};
 pub use local_terminal_panel::{LocalTerminalPanel, LocalTerminalPanelEvent, SavedName};
 pub use model::{
-    LocalTerminalId, RemoteTerminalId, RightClick, TerminalInteraction, TerminalLifecycle,
-    TerminalSize, TerminalStatus,
+    ClearAction, LocalTerminalId, RemoteTerminalId, RightClick, TerminalInteraction,
+    TerminalLifecycle, TerminalSize, TerminalStatus,
 };
 pub use notices::TerminalNotice;
 pub use run::{

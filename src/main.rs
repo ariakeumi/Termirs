@@ -139,9 +139,6 @@ fn main() {
         })
         .detach();
     });
-    // On Windows the event loop ends and `run` returns: an update that is
-    // to be installed now starts its setup, which waits for this process.
-    shellrs::update::start_handed_over();
 }
 
 /// Load the hosts saved on disk. If the database cannot be opened the

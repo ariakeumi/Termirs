@@ -3,7 +3,7 @@
 
 use crate::support::*;
 use shellrs::app::{CopyTerminal, SelectAllTerminal, Shortcut};
-use shellrs::terminal::RightClick;
+use shellrs::terminal::{ClearAction, RightClick};
 
 fn open_workspace_with_factory(
     cx: &mut TestAppContext,
@@ -1304,6 +1304,53 @@ async fn clearing_a_terminal_keeps_only_the_prompt_line(cx: &mut TestAppContext)
             .contains("alpha.txt")
     );
 
+    let settings = workspace.read_with(cx, |workspace, _| workspace.settings().clone());
+    cx.update(|cx| {
+        settings.update(cx, |store, cx| {
+            store.update(
+                |settings| settings.terminal_interaction.clear_action = ClearAction::VisibleScreen,
+                cx,
+            )
+        });
+    });
+    cx.run_until_parked();
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        #[cfg(target_os = "macos")]
+        window.press("cmd-k", cx);
+        #[cfg(not(target_os = "macos"))]
+        window.press("ctrl-shift-k", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    assert_eq!(
+        cx.update(|cx| local_screen(&workspace, cx)).trim_end(),
+        "root@localhost:~#"
+    );
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.dispatch_action(Box::new(SelectAllTerminal), cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.dispatch_action(Box::new(CopyTerminal), cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    assert!(
+        cx.update(|cx| cx.read_from_clipboard().unwrap().text().unwrap())
+            .contains("alpha.txt")
+    );
+
+    cx.update(|cx| {
+        settings.update(cx, |store, cx| {
+            store.update(
+                |settings| settings.terminal_interaction.clear_action = ClearAction::Scrollback,
+                cx,
+            )
+        });
+    });
+    cx.run_until_parked();
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
         window.dispatch_action(Box::new(ClearTerminal), cx);
@@ -1313,6 +1360,21 @@ async fn clearing_a_terminal_keeps_only_the_prompt_line(cx: &mut TestAppContext)
 
     assert_eq!(
         cx.update(|cx| local_screen(&workspace, cx)).trim_end(),
+        "root@localhost:~#"
+    );
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.dispatch_action(Box::new(SelectAllTerminal), cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.dispatch_action(Box::new(CopyTerminal), cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    assert_eq!(
+        cx.update(|cx| cx.read_from_clipboard().unwrap().text().unwrap())
+            .trim_end(),
         "root@localhost:~#"
     );
     // Clearing happens on this side; the shell is not sent anything.

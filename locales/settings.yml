@@ -9,9 +9,6 @@ settings.appearance.dark:
 settings.appearance.light:
   zh-CN: 浅色
   en: Light
-settings.channel.stable:
-  zh-CN: 稳定版
-  en: Stable
 
 settings.store.unreadable:
   zh-CN: 无法读取设置，本次使用默认设置：%{error}
@@ -142,6 +139,18 @@ settings.right_click.paste:
 settings.right_click.menu:
   zh-CN: 显示菜单
   en: Show menu
+settings.interaction.clear_action:
+  zh-CN: 清屏操作
+  en: Clear action
+settings.interaction.clear_action_description:
+  zh-CN: 「清除可见屏幕」保留可回滚的历史，「清除 Scrollback」同时清除历史。两者都保留当前提示行。
+  en: Clear visible screen keeps output in the scrollback; Clear scrollback also removes that history. Both keep the current prompt line.
+settings.clear_action.visible_screen:
+  zh-CN: 清除可见屏幕
+  en: Clear visible screen
+settings.clear_action.scrollback:
+  zh-CN: 清除 Scrollback
+  en: Clear scrollback
 
 settings.sidebar_tools.title:
   zh-CN: 侧栏功能
@@ -470,30 +479,15 @@ settings.cli.skills_keywords:
   zh-CN: skill,Agent,检查,复制
   en: skill,agent,check,copy
 
-settings.about.updates:
-  zh-CN: 应用更新
-  en: Updates
 settings.about.version:
   zh-CN: 当前版本
   en: Current version
 settings.about.version_keywords:
-  zh-CN: 当前版本,检查更新,更新,升级,版本,下载
-  en: current version,check for updates,update,upgrade,version,download
-settings.about.check:
-  zh-CN: 检查更新
-  en: Check for updates
-settings.about.restart:
-  zh-CN: 重启并安装…
-  en: Restart to update…
-settings.about.download_page:
-  zh-CN: 前往下载页
-  en: Open download page
-settings.about.retry_download:
-  zh-CN: 重试下载
-  en: Retry download
-settings.about.download:
-  zh-CN: 下载更新
-  en: Download update
+  zh-CN: 当前版本,版本,构建
+  en: current version,version,build
+settings.about.windows_portable:
+  zh-CN: Windows · x64 · 便携版
+  en: Windows · x64 · portable
 settings.about.local_build:
   zh-CN: 本机构建
   en: Local build
@@ -505,27 +499,6 @@ settings.about.build:
 settings.about.software_rendering:
   zh-CN: 软件渲染
   en: software rendering
-settings.about.channel:
-  zh-CN: 更新渠道
-  en: Update channel
-settings.about.channel_description:
-  zh-CN: 稳定版适合日常使用，Beta 可提前接收测试版本。
-  en: Stable is for everyday use. Beta gets test versions early.
-settings.about.automatic:
-  zh-CN: 自动升级
-  en: Automatic updates
-settings.about.automatic_description:
-  zh-CN: 检测到新版本后自动下载，下载完成后点击「重启并安装」完成更新。
-  en: A new version downloads by itself. Once it’s ready, click Restart to update.
-settings.about.privacy:
-  zh-CN: 隐私
-  en: Privacy
-settings.about.analytics:
-  zh-CN: 发送匿名使用统计
-  en: Send anonymous usage statistics
-settings.about.analytics_description:
-  zh-CN: 发送应用版本、操作系统/架构，用于评估安装量、版本分布，用于改进 Termirs。不会发送任何主机、凭据、命令或会话内容。
-  en: Sends the app version, operating system and architecture, to count installs and versions and to improve Termirs. No host, credential, command or session content is ever sent.
 settings.about.website:
   zh-CN: 官网
   en: Website

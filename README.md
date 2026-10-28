@@ -91,11 +91,9 @@ Hosts, groups, credentials and forwarding rules live in a local SQLite database.
 - `shellrs hosts` / `credentials` / `exec` / `upload` / `download` / `sync`: manage hosts and credentials, run commands, move and sync files. The running Termirs logs in on the command's behalf, so the command itself never reads a password or private key.
 - Install `shellrs` into your PATH and an Agent Skill for Claude Code, Codex, OpenCode or WorkBuddy from the settings page.
 
-**Security and updates**
+**Security**
 
 - Secrets stay in the system keychain. Host keys are recorded in Termirs's own `known_hosts`, never in `~/.ssh`.
-- In-app updates: the update manifest is minisign-signed and each package is checked against its SHA-256. Updates download in the background and install on restart or quit. There are stable and beta channels, and an update check sends only the version, OS and CPU architecture.
-- Anonymous usage statistics: sent to Aptabase with only the version, OS, CPU architecture and how often each feature is used, never hosts, credentials, commands or any identifier. Turn them off in Settings › About.
 
 ## Screenshots
 
@@ -121,7 +119,7 @@ Hosts, groups, credentials and forwarding rules live in a local SQLite database.
 
 ## Download
 
-Download from [shellrs.com/download](https://shellrs.com/download), which offers the package for your system, or from GitHub [Releases](https://github.com/since2006/shell-rs/releases). Betas are marked Pre-release there; to get new features early, switch the update channel to Beta in Settings › About.
+Download from [shellrs.com/download](https://shellrs.com/download), which offers the package for your system, or from GitHub [Releases](https://github.com/since2006/shell-rs/releases). Betas are marked Pre-release there.
 
 | System | Package | Notes |
 | --- | --- | --- |
@@ -133,7 +131,7 @@ Download from [shellrs.com/download](https://shellrs.com/download), which offers
 
 Every package comes with a minisign signature (`.minisig`), and each release has a `SHA256SUMS` file.
 
-Once installed, Termirs keeps itself up to date: it checks, downloads and verifies new versions in the background, then shows an icon in the top-right corner of the title bar; click it and choose "Restart to update", or just quit and the update is installed on the way out. Automatic updates are unavailable when Termirs runs from inside the DMG or outside the Applications folder, on Linux when it isn't run as the AppImage, or when the Windows portable copy's folder can't be written to.
+To update, quit Termirs, download a newer package and install it over the existing copy. For the Windows portable copy, replace the executables and keep the `data` folder.
 
 ## Getting started
 

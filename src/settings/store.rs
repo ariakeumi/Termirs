@@ -138,6 +138,37 @@ mod tests {
 
     use super::{SettingsProblem, SettingsStore};
     use crate::settings::{AppSettings, Appearance, InterfaceLanguage, SidebarWidths};
+    use crate::terminal::ClearAction;
+
+    #[test]
+    fn clear_action_defaults_for_old_settings_and_survives_reload() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        for json in ["{}", r#"{"terminal_interaction":{"right_click":"paste"}}"#] {
+            fs::write(&path, json).unwrap();
+            let (mut store, problem) = SettingsStore::load(path.clone());
+            assert!(problem.is_none());
+            assert_eq!(
+                store.settings().terminal_interaction.clear_action,
+                ClearAction::Scrollback
+            );
+            for action in [ClearAction::VisibleScreen, ClearAction::Scrollback] {
+                store
+                    .update_unnotified(|settings| {
+                        settings.terminal_interaction.clear_action = action
+                    })
+                    .unwrap()
+                    .unwrap();
+                let (reloaded, problem) = SettingsStore::load(path.clone());
+                assert!(problem.is_none());
+                assert_eq!(
+                    reloaded.settings().terminal_interaction.clear_action,
+                    action
+                );
+                assert_eq!(reloaded.settings(), store.settings());
+            }
+        }
+    }
 
     #[test]
     fn local_terminal_tab_names_load_from_old_settings_and_survive_reload() {

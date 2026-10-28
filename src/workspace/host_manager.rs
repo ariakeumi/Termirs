@@ -164,7 +164,6 @@ impl Render for HostManager {
             .on_action(self.main::<ReconnectTerminal>())
             .on_action(self.main::<OpenExplorer>())
             .on_action(self.main::<OpenSettings>())
-            .on_action(self.main::<CheckForUpdates>())
             .on_action(self.main::<OpenWebsite>())
             .on_action(self.main::<OpenChangelog>())
             .on_action(self.main::<NewLocalTerminal>())

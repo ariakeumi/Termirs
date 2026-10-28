@@ -91,11 +91,9 @@ Termirs 把 Xshell 式的主机管理和多标签终端、WinSCP 式的双栏 SF
 - `shellrs hosts` / `credentials` / `exec` / `upload` / `download` / `sync`：管理主机和凭据、执行命令、传输和同步文件。由正在运行的 Termirs 代为登录，命令本身不读密码和私钥。
 - 在设置页一键把 `shellrs` 放进 PATH，并为 Claude Code、Codex、OpenCode、WorkBuddy 安装 Agent Skill。
 
-**安全与更新**
+**安全**
 
 - 秘密只进系统钥匙串；主机信任记录存在 Termirs 自己的 `known_hosts` 里，不改动 `~/.ssh`。
-- 在线升级：更新清单经 minisign 签名，安装包按 SHA-256 校验；后台下载，重启或退出时安装。分稳定版和 Beta 两个渠道，检查更新只发送版本号、系统和 CPU 架构。
-- 匿名使用统计：经 Aptabase 只发送版本、系统、CPU 架构和各功能的使用次数，不含主机、凭据、命令或任何标识，可在「设置 › 关于」关闭。详见[使用手册](docs/manual.zh.md#隐私)。
 
 ## 截图
 
@@ -121,7 +119,7 @@ Termirs 把 Xshell 式的主机管理和多标签终端、WinSCP 式的双栏 SF
 
 ## 下载
 
-到官网 [shellrs.com/download](https://shellrs.com/download) 下载，页面会按你的系统给出对应的安装包；也可以到 GitHub [Releases](https://github.com/since2006/shell-rs/releases) 下载。Beta 版在 Releases 里标为 Pre-release，想提前用上新功能，可以在「设置 › 关于」里把更新渠道切到 Beta。
+到官网 [shellrs.com/download](https://shellrs.com/download) 下载，页面会按你的系统给出对应的安装包；也可以到 GitHub [Releases](https://github.com/since2006/shell-rs/releases) 下载。Beta 版在 Releases 里标为 Pre-release。
 
 | 系统 | 安装包 | 说明 |
 | --- | --- | --- |
@@ -133,7 +131,7 @@ Termirs 把 Xshell 式的主机管理和多标签终端、WinSCP 式的双栏 SF
 
 每个安装包都附带 minisign 签名（`.minisig`），另有一份 `SHA256SUMS`。
 
-装好之后不用再手动下载：Termirs 会在后台检查、下载并校验新版本，标题栏右上角出现提示后点「重启并安装」；不点的话，退出时也会自动装好。直接在 DMG 里运行、没放进「应用程序」文件夹、在 Linux 上不是用 AppImage 运行，或者 Windows 便携版所在的文件夹不能写入时，无法自动更新。
+更新时先退出 Termirs，下载新版本安装包并覆盖安装。Windows 便携版替换可执行文件，保留 `data` 文件夹。
 
 ## 快速上手
 
@@ -173,7 +171,7 @@ cargo run
 
 - [使用手册](docs/manual.zh.md)：每个功能的详细说明和快捷键
 - [开发与测试](docs/development.md)：构建、测试和数据目录
-- [发布流程](docs/release.md)：打包、签名和在线更新的发布步骤
+- [发布流程](docs/release.md)：打包、签名和发布步骤
 - [更新日志](CHANGELOG.zh.md)
 
 ## 路线图

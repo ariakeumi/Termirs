@@ -618,12 +618,13 @@ impl TerminalView {
         Ok(())
     }
 
-    /// Clear the screen and the scrollback, keeping the prompt line.
+    /// Clear as configured, keeping the prompt line.
     pub fn clear(&mut self, cx: &mut Context<Self>) {
         self.selecting = false;
         self.scroll_accumulator.reset();
+        let action = TerminalInteraction::current(cx).clear_action;
         self.engine
-            .update(cx, |engine, cx| engine.clear_keeping_prompt(cx));
+            .update(cx, |engine, cx| engine.clear_keeping_prompt(action, cx));
     }
 
     /// Open the find bar and put the cursor in it. An open bar selects its

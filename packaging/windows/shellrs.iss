@@ -3,10 +3,8 @@
 ;
 ;   iscc /DAppVersion=0.2.0 /DBuildDir=..\..\target\release /O..\..\dist shellrs.iss
 ;
-; The same program updates an installed copy: Termirs downloads the next
-; version's setup and runs it with /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
-; /SP- once it has exited, then starts itself again. AppId must never
-; change, or the update installs a second copy beside the first.
+; Run a newer setup to replace an installed copy. AppId must stay stable
+; so installing a new version reuses the existing installation.
 
 #ifndef AppVersion
   #error Pass /DAppVersion=<version>
@@ -79,8 +77,7 @@ Name: "{autoprograms}\Termirs"; Filename: "{app}\shellrs.exe"; AppUserModelID: "
 Name: "{autodesktop}\Termirs"; Filename: "{app}\shellrs.exe"; AppUserModelID: "li.baka.Termirs"; Tasks: desktopicon
 
 [Run]
-; Interactive installs only: an update is restarted by Termirs's own helper,
-; which waits for this setup to finish.
+; Offer to launch Termirs after an interactive installation.
 Filename: "{app}\shellrs.exe"; Description: "{cm:LaunchProgram,Termirs}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]

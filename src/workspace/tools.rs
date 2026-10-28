@@ -23,7 +23,6 @@ use gpui_kit::component::{
 };
 use gpui_kit::*;
 
-use crate::analytics::Counter;
 use crate::app::{
     CenterTab, ControlContainers, ControlService, CopyCommand, EndProcess, EnterCommand,
     RefreshConnections, RefreshDocker, RefreshGpu, RefreshHistory, RefreshProcesses,
@@ -251,7 +250,6 @@ impl Workspace {
             self.remember_target_tool(&target, None, cx);
         } else {
             self.remember_target_tool(&target, Some(tool), cx);
-            self.count_tool(tool);
         }
         self.sync_tool_sidebar(window, cx);
     }
@@ -402,11 +400,6 @@ impl Workspace {
             Ok(()) => {
                 let focus = view.read(cx).focus_handle();
                 window.focus(&focus, cx);
-                // Only the snippets and the history put commands in.
-                self.count(match self.tools.read(cx).tool() {
-                    ToolKind::History => Counter::CommandHistory,
-                    _ => Counter::CommandSnippet,
-                });
             }
             Err(why) => {
                 let message = if *run {
@@ -870,6 +863,7 @@ impl Workspace {
     /// the terminal. Keep that extra width through tool switches, and give
     /// it back only when the right dock closes.
     fn resize_for_file_sidebar(&mut self, tool: Option<ToolKind>, window: &mut Window, cx: &App) {
+        self.file_sidebar_shrink = None;
         if window.is_fullscreen() || window.is_maximized() {
             if tool.is_none() {
                 self.file_sidebar_expansion = Pixels::ZERO;
@@ -900,6 +894,9 @@ impl Workspace {
             return;
         }
         if content != window.viewport_size() {
+            if content.width < window.viewport_size().width {
+                self.file_sidebar_shrink = Some(content.width);
+            }
             window.resize(content);
         }
     }

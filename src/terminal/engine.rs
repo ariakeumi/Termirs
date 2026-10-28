@@ -36,9 +36,9 @@ use super::run::{BusyReason, RunFailure, RunHandle};
 use super::search::{MatchMarker, SearchDirection, SearchMark, SearchPosition, TerminalSearch};
 use super::zmodem::{Fed, Shown, Zmodem, ZmodemControl, ZmodemDirection, ZmodemReply};
 use super::{
-    ExecRequest, ExecResult, SharedTerminalTransportFactory, TerminalChannels, TerminalColors,
-    TerminalLifecycle, TerminalSize, TerminalStatus, TerminalTheme, TerminalTransportCommand,
-    TerminalTransportEvent,
+    ClearAction, ExecRequest, ExecResult, SharedTerminalTransportFactory, TerminalChannels,
+    TerminalColors, TerminalLifecycle, TerminalSize, TerminalStatus, TerminalTheme,
+    TerminalTransportCommand, TerminalTransportEvent,
 };
 
 pub type AlacrittyTerm = Term<TerminalEventProxy>;
@@ -544,13 +544,13 @@ impl TerminalEngine {
         !self.mode().contains(TermMode::ALT_SCREEN)
     }
 
-    /// Clear the screen and the scrollback, keeping only the line the cursor
-    /// is on (with everything wrapped into it), at the top. This happens in
+    /// Clear the screen and optionally the scrollback, keeping the cursor's
+    /// line (with everything wrapped into it) at the top. This happens in
     /// the emulator alone; the shell is not told, and carries on writing from
     /// the cursor, which stays beside its prompt.
-    pub fn clear_keeping_prompt(&mut self, cx: &mut gpui_kit::Context<Self>) {
+    pub fn clear_keeping_prompt(&mut self, action: ClearAction, cx: &mut gpui_kit::Context<Self>) {
         let mut term = self.runtime.term.lock();
-        if !clear_keeping_cursor_line(&mut term) {
+        if !clear_keeping_cursor_line(&mut term, action) {
             return;
         }
         if let Some(search) = self.search.borrow_mut().as_mut() {
@@ -1507,7 +1507,7 @@ fn encode_command(
 
 /// See `TerminalEngine::clear_keeping_prompt`. Returns whether anything was
 /// cleared.
-fn clear_keeping_cursor_line(term: &mut AlacrittyTerm) -> bool {
+fn clear_keeping_cursor_line(term: &mut AlacrittyTerm, action: ClearAction) -> bool {
     if term.mode().contains(TermMode::ALT_SCREEN) {
         return false;
     }
@@ -1515,7 +1515,7 @@ fn clear_keeping_cursor_line(term: &mut AlacrittyTerm) -> bool {
     term.selection = None;
     let cursor = term.grid().cursor.point;
     // The prompt may have wrapped onto the cursor's row; keep it whole. A part
-    // already pushed into the scrollback goes with the scrollback.
+    // already pushed into the scrollback stays there or goes with it.
     let start = term.line_search_left(cursor).line.max(Line(0));
     let lines = start.0 as usize;
     if lines > 0 {
@@ -1524,7 +1524,9 @@ fn clear_keeping_cursor_line(term: &mut AlacrittyTerm) -> bool {
         grid.scroll_up(&screen, lines);
         grid.cursor.point.line -= lines;
     }
-    term.grid_mut().clear_history();
+    if action == ClearAction::Scrollback {
+        term.grid_mut().clear_history();
+    }
     true
 }
 
@@ -1887,7 +1889,10 @@ mod tests {
         feed(&mut term, b"a\r\nb\r\nc\r\nd\r\ne\r\nroot@localhost:~# ls");
         assert!(term.history_size() > 0);
 
-        assert!(clear_keeping_cursor_line(&mut term));
+        assert!(clear_keeping_cursor_line(
+            &mut term,
+            ClearAction::Scrollback
+        ));
 
         assert_eq!(term.history_size(), 0);
         assert_eq!(line_text(&term, 0), "root@localhost:~# ls");
@@ -1902,18 +1907,57 @@ mod tests {
     fn clearing_keeps_a_wrapped_prompt_whole() {
         let mut term = test_term(10, 4);
         feed(&mut term, b"x\r\ny\r\n0123456789abc");
-        assert!(clear_keeping_cursor_line(&mut term));
+        assert!(clear_keeping_cursor_line(
+            &mut term,
+            ClearAction::Scrollback
+        ));
         assert_eq!(line_text(&term, 0), "0123456789");
         assert_eq!(line_text(&term, 1), "abc");
         assert_eq!(term.grid().cursor.point, Point::new(Line(1), Column(3)));
     }
 
     #[test]
+    fn clearing_visible_screen_keeps_output_in_scrollback() {
+        let mut term = test_term(10, 4);
+        feed(&mut term, b"a\r\nb\r\nc\r\nd\r\ne\r\n0123456789abc");
+        let history = term.history_size();
+        assert!(history > 0);
+        term.scroll_display(Scroll::Top);
+        select_all(&mut term);
+
+        assert!(clear_keeping_cursor_line(
+            &mut term,
+            ClearAction::VisibleScreen
+        ));
+
+        assert_eq!(term.history_size(), history + 2);
+        assert_eq!(term.grid().display_offset(), 0);
+        assert!(term.selection.is_none());
+        assert_eq!(line_text(&term, 0), "0123456789");
+        assert_eq!(line_text(&term, 1), "abc");
+        assert!((2..4).all(|line| line_text(&term, line).is_empty()));
+        assert_eq!(term.grid().cursor.point, Point::new(Line(1), Column(3)));
+        select_all(&mut term);
+        assert_eq!(
+            term.selection_to_string().unwrap(),
+            "a\nb\nc\nd\ne\n0123456789abc"
+        );
+        // Clearing again does not duplicate the prompt in history.
+        assert!(clear_keeping_cursor_line(
+            &mut term,
+            ClearAction::VisibleScreen
+        ));
+        assert_eq!(term.history_size(), history + 2);
+    }
+
+    #[test]
     fn clearing_leaves_a_full_screen_program_alone() {
         let mut term = test_term(10, 3);
         feed(&mut term, b"\x1b[?1049hvim");
-        assert!(!clear_keeping_cursor_line(&mut term));
-        assert_eq!(line_text(&term, 0), "vim");
+        for action in [ClearAction::VisibleScreen, ClearAction::Scrollback] {
+            assert!(!clear_keeping_cursor_line(&mut term, action));
+            assert_eq!(line_text(&term, 0), "vim");
+        }
     }
 
     #[test]

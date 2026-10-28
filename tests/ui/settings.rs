@@ -127,6 +127,45 @@ fn settings_open_from_the_title_bar_as_one_tab(cx: &mut TestAppContext) {
     cx.update(|cx| assert!(workspace.read(cx).settings_tab().is_none()));
 }
 
+#[gpui_kit::test]
+fn terminal_clear_setting_shows_the_default_and_follows_changes(cx: &mut TestAppContext) {
+    use shellrs::terminal::{ClearAction, TerminalInteraction};
+
+    let (handle, workspace) = open_workspace(cx);
+    let settings = workspace.read_with(cx, |workspace, _| workspace.settings().clone());
+    in_frame(cx, handle, |window, cx| window.click("open-settings", cx));
+    in_frame(cx, handle, |window, cx| {
+        window.within("settings").click("0-1", cx)
+    });
+    for (action, label) in [
+        (ClearAction::Scrollback, "清除 Scrollback"),
+        (ClearAction::VisibleScreen, "清除可见屏幕"),
+        (ClearAction::Scrollback, "清除 Scrollback"),
+    ] {
+        cx.update(|cx| {
+            settings.update(cx, |store, cx| {
+                store.update(
+                    |settings| settings.terminal_interaction.clear_action = action,
+                    cx,
+                )
+            });
+        });
+        cx.run_until_parked();
+        in_frame(cx, handle, |window, cx| {
+            assert_eq!(
+                window
+                    .within("settings")
+                    .within("group-1")
+                    .within("item-2")
+                    .find("btn")
+                    .label(),
+                Some(label)
+            );
+            assert_eq!(TerminalInteraction::current(cx).clear_action, action);
+        });
+    }
+}
+
 /// The label of one dropdown in the 外观 page's 常规 group. `Settings` names
 /// its groups, items and dropdown buttons by position.
 /// Open the settings tab on 外部 CLI, the sixth category.
@@ -792,4 +831,21 @@ fn the_interface_language_changes_the_window_at_once(cx: &mut TestAppContext) {
         assert_eq!(appearance_dropdown(window, 1).as_deref(), Some("跟随系统"));
     })
     .unwrap();
+}
+
+#[gpui_kit::test]
+fn the_about_page_shows_the_version_and_opens_the_website(cx: &mut TestAppContext) {
+    let (handle, _) = open_workspace(cx);
+    in_frame(cx, handle, |window, cx| window.click("open-settings", cx));
+    in_frame(cx, handle, |window, cx| {
+        window.within("settings").click("0-7", cx)
+    });
+    in_frame(cx, handle, |window, cx| {
+        assert_eq!(
+            window.find("about-version").label(),
+            Some(concat!("v", env!("CARGO_PKG_VERSION")))
+        );
+        window.click("open-website", cx);
+    });
+    assert_eq!(cx.opened_url().as_deref(), Some("https://shellrs.com"));
 }

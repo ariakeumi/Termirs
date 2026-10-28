@@ -5,14 +5,13 @@ use gpui_kit::component::input;
 use gpui_kit::{App, Global, Menu, MenuItem, OsAction, SystemMenuType, Window};
 
 use super::{
-    About, CheckForUpdates, ClearTerminal, CloseActiveTab, EditorCommand, EditorShortcut,
-    FindInTerminal, FindNextInTerminal, FindPreviousInTerminal, HideApp, HideOtherApps,
-    ImportKnownHosts, ImportSshConfig, MainWindow, MinimizeWindow, NewGroup, NewHost,
-    NewLocalTerminal, NewTemporaryConnection, NextTab, OpenChangelog, OpenSettings, OpenWebsite,
-    PreviousTab, QuickConnect, Quit, ShowAllApps, ShowCredentials, ShowForwards, ShowHosts,
-    ShowMainWindow, ToggleFullScreen, ToggleHostPanel, ToggleTheme, ToggleTool, ToggleToolSidebar,
-    ToolKind, ZoomIn, ZoomOut, ZoomReset, ZoomTerminalIn, ZoomTerminalOut, ZoomTerminalReset,
-    ZoomWindow,
+    About, ClearTerminal, CloseActiveTab, EditorCommand, EditorShortcut, FindInTerminal,
+    FindNextInTerminal, FindPreviousInTerminal, HideApp, HideOtherApps, ImportKnownHosts,
+    ImportSshConfig, MainWindow, MinimizeWindow, NewGroup, NewHost, NewLocalTerminal,
+    NewTemporaryConnection, NextTab, OpenChangelog, OpenSettings, OpenWebsite, PreviousTab,
+    QuickConnect, Quit, ShowAllApps, ShowCredentials, ShowForwards, ShowHosts, ShowMainWindow,
+    ToggleFullScreen, ToggleHostPanel, ToggleTheme, ToggleTool, ToggleToolSidebar, ToolKind,
+    ZoomIn, ZoomOut, ZoomReset, ZoomTerminalIn, ZoomTerminalOut, ZoomTerminalReset, ZoomWindow,
 };
 use crate::i18n::t;
 
@@ -77,7 +76,6 @@ pub fn application_menus(cx: &App) -> Vec<Menu> {
     vec![
         Menu::new("Termirs").items([
             MenuItem::action(t!("app.menu.about"), About),
-            MenuItem::action(t!("app.menu.check_updates"), CheckForUpdates),
             MenuItem::separator(),
             MenuItem::action(t!("app.menu.settings"), OpenSettings),
             MenuItem::separator(),

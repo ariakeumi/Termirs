@@ -8,7 +8,7 @@
 # has one. SHELLRS_MIRROR_BASE, when set (e.g. the GitHub release download
 # URL of a public repository), adds a second address for every package.
 #
-# The output is the envelope src/update/manifest.rs reads: the manifest's
+# The website and older clients read this envelope: the manifest's
 # exact text and its minisign signature, whose trusted comment
 # `shellrs-manifest <channel> <version>` the client checks. The format only
 # ever gains fields; packaging/manifest.example.json shows it.

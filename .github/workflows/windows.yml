@@ -1,6 +1,6 @@
 # The Windows build, which the Macs this is developed on cannot compile:
 # the whole crate through clippy, the external CLI's tests, including the
-# named pipe between two processes, the updater's, and the local SFTP pane's
+# named pipe between two processes, and the local SFTP pane's
 # paths (std canonicalizes to `\\?\C:\…` there).
 #
 # A push runs it only when it touches code that differs on Windows (the
@@ -15,8 +15,6 @@ on:
     branches: ["**"]
     paths:
       - "src/cli/**"
-      - "src/analytics/**"
-      - "src/update/**"
       - "src/app/mod.rs"
       - "src/app/paths.rs"
       - "src/host/private_key.rs"
@@ -69,7 +67,6 @@ jobs:
       - run: "cargo test --locked --lib ssh::"
       - run: "cargo test --locked --test ui connection::"
       - run: "cargo test --lib cli::"
-      - run: "cargo test --lib update::"
       - run: "cargo test --lib app::paths"
       - run: "cargo test --lib host::private_key"
       - run: "cargo test --lib sftp::tests::local_listing"

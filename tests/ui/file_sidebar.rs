@@ -4,7 +4,6 @@
 //! the folder the terminal's shell reports (目录跟随).
 
 use crate::support::*;
-use shellrs::analytics::{Analytics, Counter, Signal};
 use shellrs::app::{
     CloseTerminal, DisconnectTerminal, ExplorerAction, ExplorerCommand, ReconnectTerminal,
 };
@@ -213,7 +212,7 @@ async fn sftp_shortcut_expands_the_window_and_keeps_the_terminal_width(cx: &mut 
     } else {
         "ctrl-shift-p"
     };
-    for _ in 0..2 {
+    for accepts_shrink in [true, false] {
         in_frame(cx, fixture.handle, |window, cx| window.press(keys, cx));
         wait_for_path(cx, fixture.handle, FILES, "/home/tester").await;
         let expanded = in_frame(cx, fixture.handle, |window, _| {
@@ -237,21 +236,48 @@ async fn sftp_shortcut_expands_the_window_and_keeps_the_terminal_width(cx: &mut 
             window.press(keys, cx);
         });
         let restored = in_frame(cx, fixture.handle, |window, _| {
+            // The dock has closed, but the OS has not delivered the smaller
+            // viewport yet. The terminal must not grow for this frame and
+            // reflow its contents before shrinking back on the resize event.
+            assert_eq!(
+                window.find(("terminal", INITIAL_WEB_TERMINAL)).bounds(),
+                terminal
+            );
             window.window_bounds().get_bounds()
         });
         assert_eq!(restored, original);
-        cx.simulate_window_resize(fixture.handle.into(), restored.size);
+        // The OS can clamp a requested size to its minimum, reporting the
+        // old viewport again. That acknowledgement must release the hold too.
+        let actual = if accepts_shrink { restored } else { expanded };
+        cx.simulate_window_resize(fixture.handle.into(), actual.size);
         in_frame(cx, fixture.handle, |window, _| {
             assert!(
                 window
                     .try_find(("remote-pane", FILES))
                     .is_none_or(|pane| !pane.visible())
             );
+            let mut expected = terminal;
+            expected.size.width += actual.size.width - original.size.width;
             assert_eq!(
                 window.find(("terminal", INITIAL_WEB_TERMINAL)).bounds(),
-                terminal
+                expected
             );
         });
+        // The constraint is only for the pending native resize. Once that
+        // has arrived, an ordinary window resize must reach the terminal.
+        let wider = size(restored.size.width + px(80.), restored.size.height);
+        cx.simulate_window_resize(fixture.handle.into(), wider);
+        in_frame(cx, fixture.handle, |window, _| {
+            assert_eq!(
+                window
+                    .find(("terminal", INITIAL_WEB_TERMINAL))
+                    .bounds()
+                    .size
+                    .width,
+                terminal.size.width + px(80.)
+            );
+        });
+        cx.simulate_window_resize(fixture.handle.into(), restored.size);
     }
     assert_eq!(*fixture.sftp.on_terminal.lock().unwrap(), 1);
 }
@@ -463,38 +489,6 @@ async fn files_dropped_on_files_are_offered_for_upload(cx: &mut TestAppContext) 
         assert!(window.find("upload-confirm").visible());
         assert_eq!(window.find("upload-target").value(), Some("/home/tester"));
     });
-}
-
-#[gpui_kit::test]
-async fn files_count_as_a_tool_not_as_an_sftp_connection(cx: &mut TestAppContext) {
-    let fixture = open(cx, FakeSftpProvider::default());
-    let (sender, signals) = mpsc::channel();
-    cx.update_window(fixture.handle.into(), |_, window, cx| {
-        fixture.workspace.update(cx, |workspace, cx| {
-            workspace.set_analytics(Analytics::new(sender, true), window, cx)
-        });
-    })
-    .unwrap();
-    show_files(cx, &fixture, INITIAL_WEB_TERMINAL, FILES).await;
-    // ⌘F there finds nothing, so nothing is counted for it either.
-    in_frame(cx, fixture.handle, |window, cx| {
-        window.dispatch_action(
-            Box::new(ExplorerAction::new(
-                ExplorerId(FILES),
-                ExplorerCommand::FindFiles,
-            )),
-            cx,
-        )
-    });
-    // The seeded terminals' own connections aside.
-    let counted: Vec<Counter> = signals
-        .try_iter()
-        .filter_map(|signal| match signal {
-            Signal::Count(counter) if counter != Counter::Ssh => Some(counter),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(counted, [Counter::ToolFiles]);
 }
 
 /// What 目录跟随's check finds on a bash host whose ~/.bashrc does not

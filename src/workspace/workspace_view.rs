@@ -22,7 +22,6 @@ use gpui_kit::*;
 
 use super::editors::describe_files;
 use super::front::follow_focus;
-use crate::analytics::{Analytics, AnalyticsServices, Counter};
 use crate::app::ExplorerDispatch as _;
 use crate::app::{
     CenterTab, ClearTerminal, CloseActiveTab, CloseEditor, CloseExplorer, CloseLocalTerminal,
@@ -32,12 +31,12 @@ use crate::app::{
     ExplorerAction, ExplorerCommand, ExplorerShortcut, FindInTerminal, FindNextInTerminal,
     FindPreviousInTerminal, FocusSearch, InstallAgentSkill, InstallCliCommand, MaximizeWindow,
     MoveHostNode, NewChildGroup, NewGroup, NewHost, NewHostInGroup, NewLocalTerminal,
-    NewTemporaryConnection, OpenActiveExplorer, OpenExplorer, OpenSettings, PasteTerminal,
-    QuickConnect, ReconnectTerminal, RefreshCliIntegration, RemoveAgentSkill, RemoveCliCommand,
-    RenameExplorer, RenameGroup, RenameTerminal, RestartLocalTerminal, RestoreWindow,
-    SelectAllTerminal, SendBreak, SetFileSizeFormat, ShowOrHideApp, ToggleHiddenFiles,
-    ToggleHostPanel, ToggleTheme, ToolKind, ZoomIn, ZoomOut, ZoomReset, ZoomTerminalIn,
-    ZoomTerminalOut, ZoomTerminalReset,
+    NewTemporaryConnection, OpenActiveExplorer, OpenChangelog, OpenExplorer, OpenSettings,
+    OpenWebsite, PasteTerminal, QuickConnect, ReconnectTerminal, RefreshCliIntegration,
+    RemoveAgentSkill, RemoveCliCommand, RenameExplorer, RenameGroup, RenameTerminal,
+    RestartLocalTerminal, RestoreWindow, SelectAllTerminal, SendBreak, SetFileSizeFormat,
+    ShowOrHideApp, ToggleHiddenFiles, ToggleHostPanel, ToggleTheme, ToolKind, ZoomIn, ZoomOut,
+    ZoomReset, ZoomTerminalIn, ZoomTerminalOut, ZoomTerminalReset,
 };
 use crate::cli::{CliIntegration, CliServer, IntegrationPaths, OpenTarget, SshCliBackend};
 use crate::connection::{
@@ -45,9 +44,7 @@ use crate::connection::{
     ConnectionSecret, SharedConnectionTester,
 };
 use crate::editor::{EditorId, EditorPanel};
-use crate::explorer::{
-    ExplorerId, ExplorerPanel, ExplorerPanelEvent, PreviewKind, confirm_close_transfer,
-};
+use crate::explorer::{ExplorerId, ExplorerPanel, ExplorerPanelEvent, confirm_close_transfer};
 use crate::forward::{
     ForwardManager, ForwardManagerEvent, SharedForwardTransportProvider,
     SshForwardTransportProvider,
@@ -65,7 +62,7 @@ use crate::settings::{
 };
 use crate::sftp::{
     SftpRoute, SharedLocalDirectoryProvider, SharedSftpTransportProvider, SshSftpTransportProvider,
-    SystemLocalDirectoryProvider, TransferDirection,
+    SystemLocalDirectoryProvider,
 };
 use crate::shared::{commit_footer, confirm_danger, open_rename_tab_dialog};
 use crate::terminal::{
@@ -75,7 +72,6 @@ use crate::terminal::{
     SharedSerialTerminalTransportProvider, SharedTelnetTerminalTransportProvider,
     SharedTerminalTransportFactory, TerminalPanel, TerminalPanelEvent, TerminalView,
 };
-use crate::update::{UpdateServices, Updater, UpdaterEvent};
 
 use super::{
     broadcast_bar::BroadcastBar,
@@ -165,6 +161,10 @@ pub struct Workspace {
     pub(super) tools: Entity<ToolSidebar>,
     /// Width added when 文件 opens; removed when the right sidebar closes.
     pub(super) file_sidebar_expansion: Pixels,
+    /// Requested width while a native shrink is pending. Keep the dock at
+    /// this width until the OS reports its bounds (even if it clamps them), so
+    /// closing the sidebar cannot briefly widen and reflow the center.
+    pub(super) file_sidebar_shrink: Option<Pixels>,
     pub(super) host_manager: Option<super::host_manager::HostManagerWindow>,
     /// The port forwards that are running, each on a connection of its own.
     pub(super) forwards: Entity<ForwardManager>,
@@ -197,13 +197,6 @@ pub struct Workspace {
     /// Answers the `shellrs` command. Production only: UI tests never
     /// listen on the real socket.
     pub(super) cli_server: Option<CliServer>,
-    /// Looks for, downloads and installs newer versions. Without services
-    /// in UI tests, so it never reaches the network unless a test hands it
-    /// fakes.
-    pub(super) updater: Entity<Updater>,
-    /// 匿名使用统计. Production only, like the CLI server: UI tests hand in
-    /// one that only records.
-    pub(super) analytics: Option<super::analytics::Reporting>,
     local_terminal_provider: SharedLocalTerminalTransportProvider,
     host_terminals: HostTerminalTransports,
     sftp_provider: SharedSftpTransportProvider,
@@ -313,17 +306,6 @@ impl Workspace {
         }
         this.sync_cli_server(cx);
         this.remember_window(crate::app::window_state_path(), window, cx);
-        let bundle = cx.app_path().ok();
-        this.updater.update(cx, |updater, cx| {
-            updater.set_services(UpdateServices::system(bundle), cx);
-            updater.start(cx);
-        });
-        if let Some(services) = AnalyticsServices::system() {
-            let enabled = this.settings.read(cx).settings().analytics.enabled;
-            this.set_analytics(Analytics::start(services, enabled), window, cx);
-            this.report_started(cx);
-            this.count_automatic_forwards(cx);
-        }
         this
     }
 
@@ -373,13 +355,6 @@ impl Workspace {
             cx,
         );
         let forwards = cx.new(|cx| ForwardManager::new(store.clone(), forward_provider, cx));
-        let update_settings = settings.read(cx).settings().update.clone();
-        let updater = cx.new(|cx| {
-            let mut updater = Updater::new();
-            updater.set_automatic(update_settings.automatic, cx);
-            updater.set_channel(update_settings.channel, cx);
-            updater
-        });
         let sidebar_font_size = settings.read(cx).settings().interface.sidebar_font_size;
         let tab_sidebar = cx.new(|cx| {
             super::tab_sidebar::TabSidebar::new(focus_handle.clone(), sidebar_font_size, window, cx)
@@ -400,6 +375,11 @@ impl Workspace {
             cx.on_release(|this, cx| {
                 this.keep_on_close(cx);
                 this.close_host_manager(cx);
+            }),
+            cx.observe_window_bounds(window, |this, _, cx| {
+                if this.file_sidebar_shrink.take().is_some() {
+                    cx.notify();
+                }
             }),
             // The right sidebar is never dragged narrower than it opens.
             cx.observe_in(&dock_area, window, |this, _, window, cx| {
@@ -448,8 +428,6 @@ impl Workspace {
                     this.store.read(cx).forget_kept_outputs();
                 }
                 this.sync_cli_server(cx);
-                this.sync_updater(cx);
-                this.sync_analytics(window, cx);
                 if !settings
                     .read(cx)
                     .settings()
@@ -461,13 +439,6 @@ impl Workspace {
                 }
                 this.sync_tool_sidebar(window, cx);
             }),
-            cx.subscribe_in(
-                &updater,
-                window,
-                |this, _, event: &UpdaterEvent, window, cx| {
-                    this.on_updater_event(event, window, cx)
-                },
-            ),
             cx.subscribe_in(
                 &settings,
                 window,
@@ -670,6 +641,7 @@ impl Workspace {
             explorers: HashMap::new(),
             file_sidebars: HashMap::new(),
             file_sidebar_expansion: Pixels::default(),
+            file_sidebar_shrink: None,
             directory_follow: HashMap::new(),
             local_terminals,
             saved_terminals,
@@ -678,8 +650,6 @@ impl Workspace {
             settings,
             cli_integration: cx.new(|_| CliIntegration::new(None)),
             cli_server: None,
-            updater,
-            analytics: None,
             local_terminal_provider,
             host_terminals,
             sftp_provider,
@@ -870,10 +840,6 @@ impl Workspace {
     /// Tests hand it a temporary home and bin directory.
     pub fn cli_integration(&self) -> &Entity<CliIntegration> {
         &self.cli_integration
-    }
-
-    pub fn updater(&self) -> &Entity<Updater> {
-        &self.updater
     }
 
     /// Give the focus to the center: the tab shown last, or the start page
@@ -1459,7 +1425,6 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) {
         self.open_local_terminal(None, window, cx);
-        self.count(Counter::LocalTerminal);
     }
 
     /// Open a local terminal tab: in the home folder, or a saved terminal's
@@ -1524,6 +1489,28 @@ impl Workspace {
         id
     }
 
+    pub(super) fn on_open_website(
+        &mut self,
+        _: &OpenWebsite,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        cx.open_url("https://shellrs.com");
+    }
+
+    pub(super) fn on_open_changelog(
+        &mut self,
+        _: &OpenChangelog,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        cx.open_url(if crate::i18n::locale() == "zh-CN" {
+            "https://shellrs.com/zh/changelog"
+        } else {
+            "https://shellrs.com/changelog"
+        });
+    }
+
     /// Open the settings tab, or bring the open one forward: settings are
     /// one place, not one tab per visit.
     fn on_open_settings(&mut self, _: &OpenSettings, window: &mut Window, cx: &mut Context<Self>) {
@@ -1539,8 +1526,7 @@ impl Workspace {
         let integration = self.cli_integration.clone();
         // Something may have been installed or removed since last time.
         integration.update(cx, |integration, cx| integration.refresh(cx));
-        let updater = self.updater.clone();
-        let panel = cx.new(|cx| SettingsPanel::new(store, integration, updater, window, cx));
+        let panel = cx.new(|cx| SettingsPanel::new(store, integration, window, cx));
         let subscription = cx.subscribe_in(
             &panel,
             window,
@@ -1898,29 +1884,6 @@ impl Workspace {
             self.show_editor(&editor, window, cx);
             return;
         }
-        match action.command() {
-            ExplorerCommand::Enqueue(job) => self.count(match job.direction() {
-                TransferDirection::Upload => Counter::Upload,
-                TransferDirection::Download => Counter::Download,
-            }),
-            // The sidebar's 文件 has no 查找文件 to count.
-            ExplorerCommand::FindFiles
-                if panel.read(cx).connection_state() == ConnectionState::Connected
-                    && !panel.read(cx).is_sidebar() =>
-            {
-                self.count(Counter::SftpFind)
-            }
-            ExplorerCommand::Preview { remote, path } => {
-                if let Some((_, kind)) = panel.read(cx).preview_target(*remote, path.as_deref(), cx)
-                {
-                    self.count(match kind {
-                        PreviewKind::Image(_) => Counter::PreviewImage,
-                        PreviewKind::Markdown => Counter::PreviewMarkdown,
-                    });
-                }
-            }
-            _ => {}
-        }
         if matches!(action.command(), ExplorerCommand::CloseConfirmed) {
             self.remove_explorer(action.explorer(), window, cx);
         } else {
@@ -2215,7 +2178,6 @@ impl Workspace {
     ) {
         if let Some(terminal) = self.active_terminal(cx) {
             terminal.update(cx, |terminal, cx| terminal.open_find(window, cx));
-            self.count(Counter::Find);
         }
     }
 
@@ -2746,7 +2708,6 @@ fn new_terminal_panel(
                 cx.notify();
             }
             TerminalPanelEvent::Connected(terminal_id, host_id) => {
-                this.count_connection(*host_id, false, cx);
                 this.store
                     .update(cx, |store, cx| store.record_connection(*host_id, cx));
                 // A Telnet or serial terminal has no 文件 beside it.
@@ -2924,12 +2885,11 @@ fn new_explorer_panel(
                     }
                 }
                 // Only connecting, connected and disconnected change it. A
-                // terminal's 文件 logs in nowhere: `tool_files` counts it.
+                // terminal's 文件 uses the terminal's existing connection.
                 if this.explorers.get(id).is_some_and(|panel| {
                     let panel = panel.read(cx);
                     panel.connection_state() == ConnectionState::Connected && !panel.is_sidebar()
                 }) {
-                    this.count_connection(*host_id, true, cx);
                     this.store
                         .update(cx, |store, cx| store.record_connection(*host_id, cx));
                 }
@@ -3074,11 +3034,6 @@ impl Render for Workspace {
             .on_action(cx.listener(Self::on_toggle_hidden_files))
             .on_action(cx.listener(Self::on_remove_agent_skill))
             .on_action(cx.listener(Self::on_refresh_cli_integration))
-            .on_action(cx.listener(Self::on_check_for_updates))
-            .on_action(cx.listener(Self::on_download_update))
-            .on_action(cx.listener(Self::on_show_update))
-            .on_action(cx.listener(Self::on_restart_to_update))
-            .on_action(cx.listener(Self::on_open_download_page))
             .on_action(cx.listener(Self::on_open_changelog))
             .on_action(cx.listener(Self::on_open_website))
             .on_action(cx.listener(Self::on_copy_agent_skill))
@@ -3199,6 +3154,7 @@ impl Render for Workspace {
                 h_flex()
                     .flex_1()
                     .min_h_0()
+                    .when_some(self.file_sidebar_shrink, |area, width| area.w(width))
                     .child(
                         div()
                             .flex_1()

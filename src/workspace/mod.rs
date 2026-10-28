@@ -2,7 +2,6 @@
 //! the right sidebar's tools and the start page (recent hosts)
 //! the center shows while no tab is open.
 
-mod analytics;
 mod broadcast_bar;
 mod cli_changes;
 mod credentials;
@@ -28,7 +27,6 @@ mod title_bar;
 mod tmux;
 mod tool_sidebar;
 mod tools;
-mod updates;
 mod window_state;
 mod workspace_view;
 mod zmodem;

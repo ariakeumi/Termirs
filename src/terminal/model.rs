@@ -143,9 +143,10 @@ impl TerminalStatus {
     }
 }
 
-/// 终端 → 终端交互: what the mouse does in terminals besides selecting. A
+/// 终端 → 终端交互: mouse behavior and clearing in terminals. A
 /// global, set from the settings, because terminals do not depend on them.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 #[serde(default)]
 pub struct TerminalInteraction {
     /// 选中复制: what a selection takes in goes to the clipboard once the
@@ -153,6 +154,8 @@ pub struct TerminalInteraction {
     pub copy_on_select: bool,
     /// 右键行为.
     pub right_click: RightClick,
+    /// 清屏操作: whether clearing also removes the scrollback.
+    pub clear_action: ClearAction,
 }
 
 impl Global for TerminalInteraction {}
@@ -176,4 +179,15 @@ pub enum RightClick {
     /// 显示菜单: copy, paste, find, clear and the owner's commands.
     #[default]
     Menu,
+}
+
+/// What the terminal's clear command removes. Both choices keep the prompt.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClearAction {
+    /// Move visible output into the scrollback so it can still be read.
+    VisibleScreen,
+    /// Remove both visible output and the scrollback.
+    #[default]
+    Scrollback,
 }

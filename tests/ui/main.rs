@@ -7,7 +7,6 @@
 
 mod support;
 
-mod analytics;
 mod cli;
 mod connection;
 mod credential;
@@ -38,6 +37,5 @@ mod terminal;
 mod terminal_groups;
 mod tmux;
 mod transfer;
-mod update;
 mod workspace;
 mod zmodem;

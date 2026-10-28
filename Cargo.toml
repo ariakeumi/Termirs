@@ -81,15 +81,6 @@ percent-encoding = "2"
 zeroize = "1"
 keyring = "4"
 trash = "5"
-# Online update: the signed manifest, its versions and the downloads. The
-# default features keep rustls with the OS trust store and the system proxy
-# (a GUI app started from Finder or the Start menu has no HTTPS_PROXY).
-minisign-verify = "0.2"
-reqwest = { version = "0.13", features = ["blocking"] }
-semver = { version = "1", features = ["serde"] }
-# 匿名使用统计: the system's name and version for Aptabase, as its own Tauri
-# plugin reads them.
-os_info = { version = "3", default-features = false }
 serde_yaml_ng = "0.10.0"
 # ZMODEM (`rz` / `sz` in a terminal): the protocol only, driven by the
 # terminal's parser thread. Pinned: its 0.x API changes between releases.
@@ -99,7 +90,7 @@ zmodem2 = "=0.7.3"
 global-hotkey = "0.9"
 
 [target.'cfg(unix)'.dependencies]
-# `access(2)`: whether the folder ShellRS runs from can take its update.
+# PTY process information, serial port configuration and filesystem syncing.
 libc = "0.2"
 
 # The Dock icon when running outside an app bundle (`cargo run`). GPUI
@@ -135,10 +126,6 @@ windows-sys = { version = "0.61", features = [
 ] }
 # The window's handle, to restore it from maximized: GPUI only maximizes.
 raw-window-handle = "0.6"
-# The Windows portable package updates itself from a zip. Deflate through
-# flate2, which keeps its default Rust backend: our own `flate2` asks for it.
-zip = { version = "9", default-features = false, features = ["deflate-flate2"] }
-
 # The icon in the Windows executables (build.rs).
 [target.'cfg(windows)'.build-dependencies]
 winresource = "0.1"
@@ -147,9 +134,6 @@ winresource = "0.1"
 tokio = { version = "1", features = ["process", "test-util"] }
 gpui-kit = { version = "0.6.1", features = ["test-support"] }
 tempfile = "3"
-minisign = "0.7"
-# The portable installer's tests build and unpack zips on every platform.
-zip = { version = "9", default-features = false, features = ["deflate-flate2"] }
 
 # What the release workflow ships: smaller and faster than the default, at
 # the cost of a longer build.

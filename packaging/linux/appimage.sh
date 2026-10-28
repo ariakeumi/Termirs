@@ -29,8 +29,7 @@ if [ ! -f "$icon" ]; then
     exit 1
 fi
 cp "$icon" "$appdir/shellrs.png"
-# The executable itself is the entry point; the restart after an update
-# starts $APPIMAGE again, so nothing here needs to survive it.
+# The executable itself is the entry point.
 ln -s usr/bin/shellrs "$appdir/AppRun"
 
 mkdir -p "$out"
